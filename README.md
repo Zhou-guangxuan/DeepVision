@@ -30,9 +30,12 @@ pip install -r requirements.txt
 DeepVision/
 ├── .gitignore
 ├── README.md
-└── requirements.txt   # （待补充）
+├── DEVELOPMENT_LOG.md   # 开发日志
+└── requirements.txt     # （待补充）
 ```
 
 ## 说明
 
 本仓库初始化自一个空目录，项目代码尚未提交。后续按需补充源码、依赖清单与使用文档。
+
+开发过程记录见 [DEVELOPMENT_LOG.md](./DEVELOPMENT_LOG.md)，与 git 提交历史一一对应。
