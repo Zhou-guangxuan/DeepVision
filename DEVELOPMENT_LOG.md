@@ -74,3 +74,59 @@
 
 - 认证 token 存储方式（`Authorization: Bearer` vs httpOnly Cookie + CSRF）未定。
 - `README.md` 与设计文档不一致：README 仍写「Python 计算机视觉项目」，实际为全栈 Web 应用。
+
+---
+
+## 2026-10-17 · 完成阶段一开发（认证与记录读写）
+
+**类型**：功能开发
+**对应提交**：
+- `feat(backend): 实现用户认证与训练记录 CRUD（阶段一）`
+- `feat(frontend): 实现登录页、路由守卫与鉴权拦截器（阶段一）`
+
+### 环境处置
+
+- 沙箱化 shell 仍无法启动（`0xC0000142`），全部命令在放宽权限后执行。
+- Python 3.14 缺少依赖的预编译 wheel（`from versions: none`），改用系统内 Python 3.12 重建虚拟环境。
+- `npm` / `pnpm` 受 PowerShell 执行策略限制，改用 `npm.cmd` 调用。
+- PyPI 官方源不可达，改用清华镜像；npm 使用 npmmirror。
+
+### 后端交付
+
+1. 应用骨架：`pydantic-settings` 配置、SQLAlchemy 引擎与会话、统一错误体 `{code, message, detail}`。
+2. 模型：`User`、`Dataset`、`TrainingRecord`（列名 `model_config`）、任务状态机常量。
+3. 认证：argon2id 密码哈希、JWT 签发与校验、`get_current_user` 依赖、401 细分错误码（`NOT_AUTHENTICATED` / `TOKEN_EXPIRED` / `TOKEN_INVALID`）。
+4. 接口：注册、登录、`/me`；训练记录 CRUD（分页、时间倒序、归属校验）。
+5. Alembic 迁移：由 autogenerate 生成 `c5ffc10eb3be_initial_schema.py`。
+
+### 前端交付
+
+1. Vite + Vue3 + TS + Tailwind + Pinia + Vue Router 脚手架。
+2. 设计系统落地：`styles/tokens.css`（色彩 / 动效 token）+ `styles/main.css`（按钮、输入框、卡片、Toast、骨架屏、徽标）。
+3. 基础组件：`AppButton`、`AppInput`（浮动标签）、`AppCard`（实心 / 玻璃）、`AppToastHost`、`AppSkeleton`。
+4. 登录页：品牌区 Canvas 拓扑动画、浮动标签、密码强度条、字段校验与服务端错误两种错误态、抖动反馈。
+5. 路由守卫（未登录重定向 `/login` 并记录 redirect）、Axios 拦截器（自动携带 Bearer、401 清理凭证并跳转、失败统一 Toast）。
+6. 工作台占位页：展示当前用户并拉取 `/api/records`，用于验证鉴权链路。
+
+### 验证结果
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | 21 个用例全部通过 |
+| 前端类型检查 + 构建 | `vue-tsc --noEmit && vite build` 通过 |
+| 真实 HTTP 冒烟 | 注册 → 登录 → `/me` → 创建记录 → 列表 → 无 token 401，全部符合预期 |
+| 迁移执行 | `alembic upgrade head` 成功，表：`users`、`datasets`、`training_records`、`alembic_version` |
+
+### 决定与偏离
+
+- **`datasets` 表提前到阶段一**：`training_records.dataset_id` 为外键，必须先存在被引用表。阶段三只需补上传、解析与统计逻辑。
+- **`model_config` 命名处理**：Pydantic v2 保留 `model_config` 作为配置属性，无法作字段名。数据库列名仍为 `model_config`，ORM 属性与 schema 字段用 `network_config` + alias，对外 JSON 契约保持不变（已有测试覆盖）。
+- **注册不返回 token**：注册返回 201 用户信息，前端再调用登录，保持接口语义单一。
+- **认证端点错误静默**：登录 / 注册的错误在表单内联展示，不触发全局 Toast 与 401 跳转；其余接口失败统一 Toast，不存在静默失败。
+- **`.gitignore` 补充**：新增 `node_modules/`、`*.db` 等，避免依赖与本地数据库进入版本库。
+
+### 已知限制
+
+- Token 存于 localStorage（Bearer 头），存在 XSS 风险；httpOnly Cookie + CSRF 方案仍待决策。
+- 登录页视觉仅通过构建与代码评审验证，尚未做浏览器截图核对。
+- 沙箱 shell 故障未修复，后续每次执行命令仍需授权。

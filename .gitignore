@@ -151,3 +151,18 @@ Thumbs.db
 *.onnx
 *.h5
 *.safetensors
+
+# Node / 前端
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 本地数据库文件
+*.db
+*.db-journal
+*.sqlite3
+
+# 冒烟测试与本地运行产物
+*.log
