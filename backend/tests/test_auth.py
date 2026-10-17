@@ -128,6 +128,16 @@ def test_short_password_rejected(
     assert resp.json()["code"] == "VALIDATION_ERROR"
 
 
+def test_six_char_password_accepted(client: TestClient) -> None:
+    """最小长度 6 位：允许注册 6 位密码（含默认测试账号 admin/123456）。"""
+    resp = client.post(
+        "/api/auth/register",
+        json={"username": "admin", "password": "123456"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["username"] == "admin"
+
+
 def test_invalid_username_pattern_rejected(
     client: TestClient, user_payload: dict[str, str]
 ) -> None:

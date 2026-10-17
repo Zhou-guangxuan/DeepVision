@@ -14,7 +14,11 @@ class RegisterRequest(BaseModel):
         pattern=USERNAME_PATTERN,
         description="3-64 位，仅允许字母、数字、下划线与连字符",
     )
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(
+        min_length=6,
+        max_length=128,
+        description="6-128 位",
+    )
 
 
 class LoginRequest(BaseModel):

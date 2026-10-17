@@ -83,8 +83,8 @@ function validate(): boolean {
   if (!USERNAME_RE.test(username.value.trim())) {
     next.username = '用户名需 3-64 位，仅支持字母、数字、下划线与连字符'
   }
-  if (password.value.length < 8) {
-    next.password = '密码至少 8 位'
+  if (password.value.length < 6) {
+    next.password = '密码至少 6 位'
   }
   if (isRegister.value && confirm.value !== password.value) {
     next.confirm = '两次输入的密码不一致'
