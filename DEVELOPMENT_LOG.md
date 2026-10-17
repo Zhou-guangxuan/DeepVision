@@ -160,3 +160,50 @@
 
 - 密码最小长度从 8 降到 6，安全性随之下降（OWASP 建议 8 位以上）。此处为满足本地测试账号的便利性，属于有意识的取舍。
 - `admin/123456` 为弱口令，仅限本地开发。仓库为 Public，公网部署前必须删除该账号或更换密码；脚本与 README 均已注明。
+
+---
+
+## 2026-10-17 · 阶段一完成状态确认与本地环境处置
+
+**类型**：里程碑确认
+**对应提交**：`docs: 补记阶段一完成状态与本地环境处置`
+
+### 阶段一验收标准逐项确认
+
+| 设计文档验收项 | 结果 | 依据 |
+| --- | --- | --- |
+| 密码为 argon2 哈希，无明文 | 通过 | `test_password_is_argon2_hashed`；库中值为 `$argon2id$v=19$...` |
+| 登录返回 JWT，可访问 `/api/records` | 通过 | 真实冒烟：`token_len=141`，`/api/records` 返回 200 |
+| 无 token / 过期返回 401 | 通过 | `test_me_requires_token`、`test_expired_token_returns_401` |
+| 未登录访问 `/workspace` 重定向 `/login` | 通过 | `frontend/src/router/index.ts` 全局守卫 |
+| 1440×900 无横向滚动；两种错误态可复现 | 已实现 | `body { overflow-x: hidden }`；字段校验与表单底部错误各一 |
+| 请求失败均有 Toast，无静默失败 | 通过 | Axios 拦截器统一提示（认证端点走内联展示） |
+
+### 本地环境处置
+
+1. PyCharm 项目 SDK 指向 `D:\AI-web\.venv`（Python 3.14.6，PyCharm 自动创建），与依赖所在的 `backend\.venv`（3.12）不一致，导致编辑器大面积报「无法解析导入」。
+   - 已向 `D:\AI-web\.venv` 补齐 15 个依赖：uvicorn、PyJWT、argon2-cffi、argon2-cffi-bindings、pydantic-settings、httpx、httpcore、httptools、websockets、watchfiles、pyyaml、python-dotenv、click、h11、certifi。
+   - 用该 3.14 解释器运行测试：22 个用例全部通过；`pip check` 无损坏依赖。
+   - **更正先前结论**：Python 3.14 可以安装本项目后端依赖（此前「3.14 缺 wheel 装不上」的判断有误，实际是镜像或 pip 的偶发问题）。
+2. IDE 导入解析：`app.*` 位于 `backend/` 下，需在 PyCharm 中把 `backend` 标记为 Sources Root，否则 `backend/alembic/env.py` 等文件显示无法解析。**此提示仅影响 IDE 索引，不影响运行**——`alembic.ini` 的 `prepend_sys_path = .` 与 `pytest.ini` 的 `pythonpath = .` 已保证运行时导入正确。
+3. 现存两个虚拟环境：根 `.venv`（Python 3.14）与 `backend\.venv`（Python 3.12），均含完整依赖，尚未统一。
+
+### 仓库状态
+
+- `main` 与 `origin/main` 同步，当前提交 `52122d5`。
+- 工作区干净，无未跟踪文件；`.venv`、`node_modules`、`*.db`、`dist` 均已被 `.gitignore` 正确忽略。
+- 阶段一相关提交：
+
+| 提交 | 内容 |
+| --- | --- |
+| `f09258b` | 后端：认证与训练记录 CRUD |
+| `7a3d362` | 前端：登录页、路由守卫、鉴权拦截器 |
+| `cc64a35` | README、gitignore 与阶段一日志 |
+| `5854ab5` | 密码最小长度改为 6 位、测试账号种子脚本 |
+| `52122d5` | README 补充测试账号说明 |
+
+### 待办
+
+- 统一虚拟环境（根 `.venv` 或 `backend\.venv` 二选一），避免后续混淆。
+- `admin/123456` 为弱口令，公网部署前必须删除或改密。
+- 阶段二开工前需先决策：画布是否限制为链式结构（设计文档 §2.2 与 §5.3 的 DAG 冲突）。
