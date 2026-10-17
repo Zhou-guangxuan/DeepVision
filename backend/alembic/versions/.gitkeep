@@ -1,0 +1,4 @@
+Alembic 迁移脚本目录。
+
+新增迁移：alembic revision --autogenerate -m "描述"
+应用迁移：alembic upgrade head
