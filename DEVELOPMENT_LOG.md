@@ -130,3 +130,33 @@
 - Token 存于 localStorage（Bearer 头），存在 XSS 风险；httpOnly Cookie + CSRF 方案仍待决策。
 - 登录页视觉仅通过构建与代码评审验证，尚未做浏览器截图核对。
 - 沙箱 shell 故障未修复，后续每次执行命令仍需授权。
+
+---
+
+## 2026-10-17 · 测试账号与密码策略调整
+
+**类型**：配置调整
+**对应提交**：`feat: 密码最小长度调整为 6 位，新增测试账号种子脚本`
+
+### 本次对话完成的工作
+
+1. 新增 `backend/scripts/seed_test_user.py`：创建或重置测试账号，可重复执行（幂等），密码以 argon2id 哈希入库。
+2. 创建测试账号 `admin` / `123456`（数据库 id=2，位于 `backend/deepvision.db`）。
+3. 密码最小长度由 8 位调整为 6 位，前后端同步：
+   - 后端 `RegisterRequest`（`backend/app/schemas/auth.py`）
+   - 前端登录/注册页校验（`frontend/src/views/LoginView.vue`）
+4. 补充测试 `test_six_char_password_accepted`，用例总数 21 → 22。
+5. README 新增「测试账号」章节；修正 Python 版本说明（3.12 与 3.14 均验证通过）。
+
+### 验证结果
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | 22 个用例全部通过 |
+| 前端构建 | `vue-tsc --noEmit && vite build` 通过 |
+| 真实登录 | `admin/123456` 返回 200；`/api/auth/me` 返回 admin；错误密码返回 401 |
+
+### 决定与风险
+
+- 密码最小长度从 8 降到 6，安全性随之下降（OWASP 建议 8 位以上）。此处为满足本地测试账号的便利性，属于有意识的取舍。
+- `admin/123456` 为弱口令，仅限本地开发。仓库为 Public，公网部署前必须删除该账号或更换密码；脚本与 README 均已注明。

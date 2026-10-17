@@ -48,7 +48,7 @@ DeepVision/
 
 ## 环境要求
 
-- Python **3.12**（3.13 / 3.14 部分依赖尚无预编译 wheel，安装会失败）
+- Python 3.12+（后端已在 3.12 与 3.14 上验证通过；后续 PyTorch 等依赖对 3.14 支持可能滞后，推荐 3.12）
 - Node.js 18+
 
 ## 后端
@@ -80,11 +80,29 @@ npm run dev                   # http://localhost:5173
 
 开发期 Vite 已把 `/api` 代理到 `http://127.0.0.1:8000`，无需额外配置跨域。
 
+## 测试账号（本地开发）
+
+执行 `alembic upgrade head` 建表后，用种子脚本创建或重置测试账号：
+
+```bash
+cd backend
+.venv\Scripts\python.exe scripts/seed_test_user.py                          # 默认 admin / 123456
+.venv\Scripts\python.exe scripts/seed_test_user.py --username demo --password demo123456
+```
+
+| 用户名 | 密码 |
+| --- | --- |
+| `admin` | `123456` |
+
+脚本可重复执行（账号已存在则重置密码），密码始终以 argon2id 哈希入库、不存明文。
+
+> 弱口令仅用于本地开发。本仓库为公开仓库，部署到公网前请删除该账号或更换密码。
+
 ## 测试
 
 ```bash
 cd backend
-.venv\Scripts\python.exe -m pytest    # 21 个用例
+.venv\Scripts\python.exe -m pytest    # 22 个用例
 ```
 
 ## 已实现（阶段一）
