@@ -32,7 +32,7 @@ DeepVision/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # Axios 封装：auth、records、graph
+│   │   ├── api/             # Axios 封装：auth、records、graph、datasets
 │   │   ├── components/
 │   │   │   ├── canvas/      # 画布、节点、节点库、属性面板、小地图、工具栏
 │   │   │   └── ui/          # Button / Input / Card / Toast / Skeleton
@@ -41,7 +41,8 @@ DeepVision/
 │   │   ├── stores/          # Pinia：auth、toast、graph
 │   │   ├── styles/          # 设计 token 与组件样式
 │   │   ├── types/           # 拓扑类型与 model_config 契约
-│   │   └── views/           # LoginView / WorkspaceView
+│   │   ├── utils/           # 自研 CSV 解析与列类型推断
+│   │   └── views/           # LoginView / WorkspaceView / DataView
 │   ├── package.json
 │   └── vite.config.ts
 ├── 设计文档.md
@@ -105,7 +106,7 @@ cd backend
 
 ```bash
 cd backend
-.venv\Scripts\python.exe -m pytest    # 32 个用例
+.venv\Scripts\python.exe -m pytest    # 47 个用例
 ```
 
 ## 已实现（阶段一）
@@ -132,6 +133,16 @@ cd backend
 - 支持分支与汇合（任意前馈 DAG），汇合节点按特征维 `concat` 合并
 - 后端 `POST /api/graph/validate`：成环、自连、重复连线、悬空引用校验，并返回执行计划（拓扑序 + 前驱）
 
+## 已实现（阶段三）
+
+- `/data` 页面：拖拽上传 CSV、50MB 限制、四类异常明确提示（非 CSV / 空文件 / 超限 / 解析失败）
+- 自研 CSV 解析器：引号、转义双引号、字段内换行、CRLF、BOM
+- 前 10 行预览表，空值高亮
+- 列类型推断（数值 / 类别 / 日期）与手动纠正（勾选特征列、单选目标列）
+- 缺失值处理：均值 / 中位数 / 众数 / 删除，处理后样本数实时更新
+- 后端 Pandas 解析：复用同一套规则，返回样本数、特征数、均值、方差与目标分布
+- 数据集落库与原始文件存储（`storage/datasets/`），列表与详情接口含归属校验
+
 ## 主要接口
 
 | 方法 | 路径 | 说明 | 认证 |
@@ -144,8 +155,11 @@ cd backend
 | GET | `/api/records/{id}` | 记录详情 | 是 |
 | DELETE | `/api/records/{id}` | 删除记录 | 是 |
 | POST | `/api/graph/validate` | 校验网络拓扑结构 | 是 |
+| POST | `/api/datasets` | 上传并解析 CSV 数据集 | 是 |
+| GET | `/api/datasets` | 数据集列表（分页） | 是 |
+| GET | `/api/datasets/{id}` | 数据集详情与统计 | 是 |
 
 ## 后续阶段
 
-拖拽式拓扑编辑器已完成。后续：CSV 上传与预处理 → 训练实时可视化 → LLM 助教与 Agent 调参。
+拖拽式拓扑编辑器与 CSV 数据集上传已完成。后续：训练实时可视化 → LLM 助教与 Agent 调参。
 详见 [设计文档.md](./设计文档.md) 第 8 章。

@@ -318,3 +318,58 @@
 
 - 实际训练尚未实现（阶段四），`execution_plan` 目前只被校验接口消费。
 - `concat` 之外的汇合方式（`add` / `multiply`）未实现，`merge` 字段已预留扩展位。
+
+---
+
+## 2026-10-18 · 完成阶段三开发（CSV 上传与预处理）
+
+**类型**：功能开发
+**对应提交**：
+- `feat(backend): CSV 数据集上传解析与统计（阶段三）`
+- `feat(frontend): 数据集上传页与 CSV 解析（阶段三）`
+
+### 环境处置与偏离
+
+1. pandas 3.0.6 / numpy 2.5.4 / python-multipart 0.0.32 经**阿里云镜像**装入两个虚拟环境（清华镜像当时 SSL 握手失败）。
+2. **PapaParse 未能安装**：npm 持续报 `Invalid Version`。定位过程：清空 `node_modules` 后 `npm ci` 仍失败 → 说明损坏在 `package-lock.json`；备份并删除 lock 后 `npm install` 恢复正常。前端因此改为**自研 CSV 解析器**。
+3. 清理 `node_modules` 时曾删到一半被运行中的 vite / esbuild 进程锁住，导致构建报 `vue-tsc is not recognized`；终止残留进程后完整重装（153 个包）。
+4. 集成验证时 httpx 默认走系统代理（Clash），访问 localhost 返回 502；改用 `trust_env=False` 绕过。
+
+### 后端交付
+
+- `app/services/csv_service.py`：UTF-8 / GBK 解码、列类型推断、四种缺失值策略、均值 / 方差 / 目标分布统计、文件落盘。
+- 接口：`POST /api/datasets`（multipart）、`GET /api/datasets`、`GET /api/datasets/{id}`。
+- 数据集表新增 `target_column`、`missing_strategy`、`stats` 三列，迁移 `2b11c1dd2f2c`。
+- `requirements.txt` 增加 pandas、python-multipart。
+- 测试 `tests/test_datasets.py`：14 个用例。
+
+### 前端交付
+
+| 文件 | 职责 |
+| --- | --- |
+| `utils/csv.ts` | 自研 CSV 解析器（引号 / 转义 / 字段内换行 / CRLF / BOM）、列类型推断、处理后样本数估算 |
+| `views/DataView.vue` | 拖拽上传、预览表、列角色、缺失值策略、处理后样本数、提交、结果统计 |
+| `api/datasets.ts` | 上传与列表接口封装 |
+| `router/index.ts` | 新增 `/data` 路由 |
+| `views/WorkspaceView.vue` | 顶栏「数据集」入口启用 |
+
+### 验证结果
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | 47 个用例全部通过（阶段二 33 + 阶段三 14） |
+| 前端构建 | `vue-tsc --noEmit && vite build` 通过（124 个模块） |
+| 集成验证 | 起前后端 → `admin/123456` 登录 → 经 Vite 代理上传 CSV 返回 **201**；`sample_count=4`、`feature_count=2`、`f1 mean=2.5`、`variance=1.666667`、目标分布 `{0:2, 1:2}`、列表 total=1 |
+
+### 验收对照
+
+- 非 CSV、空文件、超限、解析失败四类异常均有明确错误码与中文提示，测试覆盖。
+- 统计与 Pandas 直接计算结果一致（测试用 `df.var(ddof=1)` 对齐）。
+- 前端「处理后样本数」与后端 `dropna` 语义一致。
+
+### 遗留与风险
+
+- 前端解析器替代 PapaParse 属环境所迫的偏离；依赖树已修复，后续可直接换回。
+- `package-lock.json` 已重新生成，部分依赖版本可能小幅上浮。
+- 「10MB 文件 3s 内完成预览」未实测（浏览器交互仍未验证）。
+- 缺失值策略仅对所选列生效；**标准化与类别编码尚未实现**，这是阶段四训练前的必要前置。

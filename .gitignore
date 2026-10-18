@@ -166,3 +166,6 @@ pnpm-debug.log*
 
 # 冒烟测试与本地运行产物
 *.log
+
+# 运行时存储（上传的 CSV 与后续模型权重）
+storage/
