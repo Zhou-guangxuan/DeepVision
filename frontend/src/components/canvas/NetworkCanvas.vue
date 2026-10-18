@@ -414,8 +414,8 @@ defineExpose({ addNodeAtCenter })
       </div>
     </div>
 
-    <!-- 小地图 -->
-    <div class="pointer-events-none absolute bottom-3 right-3" @pointerdown.stop>
+    <!-- 小地图（上移，避让右下角的 AI 助教悬浮按钮） -->
+    <div class="pointer-events-none absolute bottom-[92px] right-3" @pointerdown.stop>
       <CanvasMinimap
         :nodes="store.nodes"
         :tx="viewport.tx.value"
