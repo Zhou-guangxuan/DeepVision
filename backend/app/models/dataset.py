@@ -30,6 +30,11 @@ class Dataset(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     columns_meta: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    target_column: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    missing_strategy: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="mean"
+    )
+    stats: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     sample_count: Mapped[int] = mapped_column(nullable=False, default=0)
     feature_count: Mapped[int] = mapped_column(nullable=False, default=0)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)

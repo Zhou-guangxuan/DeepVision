@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=120, ge=1)
 
+    # 数据集存储
+    storage_dir: str = "./storage"
+    max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
+
     # 数据库
     database_url: str = "sqlite:///./deepvision.db"
 
