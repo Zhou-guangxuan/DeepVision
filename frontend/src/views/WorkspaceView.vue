@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { validateGraph } from '@/api/graph'
+import { listRecords } from '@/api/records'
 import NetworkCanvas from '@/components/canvas/NetworkCanvas.vue'
 import NodeLibrary from '@/components/canvas/NodeLibrary.vue'
 import PropertyPanel from '@/components/canvas/PropertyPanel.vue'
@@ -10,8 +11,15 @@ import StartTrainingDialog from '@/components/train/StartTrainingDialog.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGraphStore } from '@/stores/graph'
+import type { LayerStat, ViewMode } from '@/stores/graph'
 import { useToastStore } from '@/stores/toast'
 import type { NodeParamValue, NodeType } from '@/types/graph'
+
+const VIEW_MODES: { value: ViewMode; label: string }[] = [
+  { value: 'weight', label: '权重' },
+  { value: 'gradient', label: '梯度' },
+  { value: 'activation', label: '激活' },
+]
 
 const auth = useAuthStore()
 const graph = useGraphStore()
@@ -40,7 +48,25 @@ onMounted(async () => {
   if (graph.loadDraft() && graph.nodes.length > 0) {
     toast.info('已恢复上次的拓扑草稿')
   }
+  await loadLayerStats()
 })
+
+/** 读取最近一次训练记录的逐层统计，供顶栏的权重/梯度/激活视图使用 */
+async function loadLayerStats(): Promise<void> {
+  try {
+    const page = await listRecords(1, 1)
+    const latest = page.items[0]
+    const metrics = latest?.result_metrics as
+      | { layer_stats?: LayerStat[] }
+      | undefined
+    const stats = metrics?.layer_stats
+    if (Array.isArray(stats) && stats.length > 0) {
+      graph.setLayerStats(stats)
+    }
+  } catch {
+    // 没有历史训练记录时保持未加载状态，界面会退化为中性样式
+  }
+}
 
 onBeforeUnmount(() => {
   window.clearTimeout(saveTimer)
@@ -121,6 +147,45 @@ function onTrainingStarted(taskId: string): void {
         <span class="dv-badge dv-badge--neutral shrink-0">阶段二</span>        <span class="hidden text-[11px] text-muted md:inline">
           {{ graph.savedAt ? '草稿已保存' : '草稿未保存' }}
         </span>
+      </div>
+
+      <!-- 视图模式切换（设计文档第二版 · 模块一） -->
+      <div class="flex flex-1 justify-center px-2">
+        <div
+          class="flex items-center gap-0.5 rounded-md border p-0.5"
+          :style="{
+            borderColor: 'var(--border-default)',
+            background: 'var(--bg-base)',
+          }"
+          role="group"
+          aria-label="视图模式"
+        >
+          <span class="px-2 text-[11px] text-muted">视图</span>
+          <button
+            v-for="mode in VIEW_MODES"
+            :key="mode.value"
+            type="button"
+            class="rounded-sm px-2.5 py-1 text-xs transition-colors duration-fast"
+            :class="
+              graph.viewMode === mode.value
+                ? 'text-primary'
+                : 'text-muted hover:text-secondary'
+            "
+            :style="
+              graph.viewMode === mode.value
+                ? { background: 'var(--bg-elevated)' }
+                : {}
+            "
+            :title="
+              graph.layerStatsLoaded
+                ? '按最近一次训练的逐层数据渲染'
+                : '完成一次训练后可查看逐层数据'
+            "
+            @click="graph.setViewMode(mode.value)"
+          >
+            {{ mode.label }}
+          </button>
+        </div>
       </div>
 
       <div class="flex items-center gap-2">

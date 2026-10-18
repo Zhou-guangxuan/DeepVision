@@ -17,6 +17,15 @@ import {
 const HISTORY_LIMIT = 50
 const DRAFT_KEY = 'dv_graph_draft'
 
+export type ViewMode = 'weight' | 'gradient' | 'activation'
+
+export interface LayerStat {
+  node_id: string
+  weight_norm: number
+  grad_norm: number
+  activation_mean: number
+}
+
 interface Snapshot {
   nodes: GraphNode[]
   edges: GraphEdge[]
@@ -39,6 +48,24 @@ export const useGraphStore = defineStore('graph', () => {
   const selectedNodeId = ref<string | null>(null)
   const selectedEdgeId = ref<string | null>(null)
   const savedAt = ref<string | null>(null)
+
+  /** 顶栏视图模式：权重 / 梯度 / 激活（对应设计文档第二版模块一） */
+  const viewMode = ref<ViewMode>('weight')
+  const layerStats = ref<Record<string, LayerStat>>({})
+  const layerStatsLoaded = ref(false)
+
+  function setViewMode(mode: ViewMode): void {
+    viewMode.value = mode
+  }
+
+  function setLayerStats(stats: LayerStat[]): void {
+    const map: Record<string, LayerStat> = {}
+    for (const item of stats) {
+      map[item.node_id] = item
+    }
+    layerStats.value = map
+    layerStatsLoaded.value = true
+  }
 
   const past = ref<Snapshot[]>([])
   const future = ref<Snapshot[]>([])
@@ -296,6 +323,11 @@ export const useGraphStore = defineStore('graph', () => {
     selectedEdgeId,
     selectedNode,
     savedAt,
+    viewMode,
+    layerStats,
+    layerStatsLoaded,
+    setViewMode,
+    setLayerStats,
     canUndo,
     canRedo,
     pushHistory,

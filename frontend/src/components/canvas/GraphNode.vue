@@ -13,6 +13,8 @@ import {
 const props = defineProps<{
   node: GraphNode
   selected: boolean
+  /** 0~1，用于「权重 / 梯度 / 激活」视图下的发光强度 */
+  intensity?: number
 }>()
 
 const emit = defineEmits<{
@@ -22,6 +24,7 @@ const emit = defineEmits<{
 
 const accent = computed(() => NODE_TYPE_ACCENT[props.node.type])
 const summary = computed(() => nodeSummary(props.node))
+const intensity = computed(() => props.intensity ?? 0)
 const showInputPort = computed(() => props.node.type !== 'input')
 const showOutputPort = computed(() => props.node.type !== 'output')
 </script>
@@ -38,7 +41,11 @@ const showOutputPort = computed(() => props.node.type !== 'output')
       background: 'var(--bg-surface)',
       borderColor: selected ? accent : 'var(--border-default)',
       borderWidth: selected ? '2px' : '1px',
-      boxShadow: selected ? '0 0 20px rgba(34, 211, 238, 0.22)' : 'none',
+      boxShadow: selected
+        ? '0 0 20px rgba(34, 211, 238, 0.22)'
+        : intensity > 0.02
+          ? `0 0 ${Math.round(8 + intensity * 18)}px rgba(34, 211, 238, ${(0.12 + intensity * 0.3).toFixed(2)})`
+          : 'none',
     }"
     @pointerdown.stop="emit('node-pointerdown', $event)"
   >

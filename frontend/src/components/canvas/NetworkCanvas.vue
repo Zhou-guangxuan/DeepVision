@@ -46,6 +46,41 @@ const nodeMap = computed(
   () => new Map(store.nodes.map((node) => [node.id, node])),
 )
 
+/** 当前视图模式对应的逐层指标 */
+const metricByNode = computed(() => {
+  const key =
+    store.viewMode === 'weight'
+      ? 'weight_norm'
+      : store.viewMode === 'gradient'
+        ? 'grad_norm'
+        : 'activation_mean'
+
+  const result: Record<string, number> = {}
+  for (const [id, stat] of Object.entries(store.layerStats)) {
+    result[id] = Number(stat[key] ?? 0)
+  }
+  return result
+})
+
+const maxMetric = computed(() => {
+  const values = Object.values(metricByNode.value)
+  return values.length > 0 ? Math.max(...values, 1e-9) : 0
+})
+
+function nodeIntensity(nodeId: string): number {
+  if (!store.layerStatsLoaded || maxMetric.value <= 0) return 0
+  const value = metricByNode.value[nodeId] ?? 0
+  return Math.min(1, value / maxMetric.value)
+}
+
+function edgeIntensity(source: string, target: string): number {
+  if (!store.layerStatsLoaded || maxMetric.value <= 0) return 0
+  // 权重 / 梯度属于目标层的线性变换；激活取源节点的输出
+  const id = store.viewMode === 'activation' ? source : target
+  const value = metricByNode.value[id] ?? 0
+  return Math.min(1, value / maxMetric.value)
+}
+
 const edgePaths = computed(() =>
   store.edges
     .map((edge) => {
@@ -61,9 +96,19 @@ const edgePaths = computed(() =>
         id: edge.id,
         d: `M ${x1} ${y1} C ${x1} ${y1 + delta}, ${x2} ${y2 - delta}, ${x2} ${y2}`,
         selected: edge.id === store.selectedEdgeId,
+        intensity: edgeIntensity(edge.source, edge.target),
       }
     })
-    .filter((item): item is { id: string; d: string; selected: boolean } => item !== null),
+    .filter(
+      (
+        item,
+      ): item is {
+        id: string
+        d: string
+        selected: boolean
+        intensity: number
+      } => item !== null,
+    ),
 )
 
 const tempPath = computed(() => {
@@ -342,7 +387,7 @@ defineExpose({ addNodeAtCenter })
             :d="edge.d"
             fill="none"
             :stroke="edge.selected ? 'var(--brand-cyan)' : 'var(--border-default)'"
-            :stroke-width="edge.selected ? 2.5 : 1.5"
+            :stroke-width="edge.selected ? 2.5 : 1.2 + edge.intensity * 3"
           />
         </g>
 
@@ -361,6 +406,7 @@ defineExpose({ addNodeAtCenter })
         :key="node.id"
         :node="node"
         :selected="node.id === store.selectedNodeId"
+        :intensity="nodeIntensity(node.id)"
         @node-pointerdown="onNodePointerDown(node.id, $event)"
         @port-pointerdown="onPortPointerDown(node.id, $event)"
         @dblclick="onNodeDoubleClick(node.id)"
