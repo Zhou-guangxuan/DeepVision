@@ -21,6 +21,11 @@ const router = createRouter({
       component: () => import('@/views/WorkspaceView.vue'),
     },
     {
+      path: '/data',
+      name: 'data',
+      component: () => import('@/views/DataView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/workspace',
     },

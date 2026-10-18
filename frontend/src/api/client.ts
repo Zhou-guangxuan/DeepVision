@@ -17,7 +17,6 @@ const AUTH_ENDPOINTS = ['/auth/login', '/auth/register']
 export const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
   timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
 })
 
 http.interceptors.request.use((config) => {

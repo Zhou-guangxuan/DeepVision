@@ -111,8 +111,7 @@ function logout(): void {
           class="w-40 bg-transparent text-sm text-secondary outline-none transition-colors duration-fast hover:text-primary focus:text-primary"
           aria-label="项目名称"
         />
-        <span class="dv-badge dv-badge--neutral shrink-0">阶段二</span>
-        <span class="hidden text-[11px] text-muted md:inline">
+        <span class="dv-badge dv-badge--neutral shrink-0">阶段二</span>        <span class="hidden text-[11px] text-muted md:inline">
           {{ graph.savedAt ? '草稿已保存' : '草稿未保存' }}
         </span>
       </div>
@@ -126,7 +125,7 @@ function logout(): void {
         >
           校验拓扑
         </AppButton>
-        <AppButton variant="ghost" size="sm" disabled title="阶段三开放">
+        <AppButton variant="secondary" size="sm" @click="router.push('/data')">
           数据集
         </AppButton>
         <AppButton variant="ghost" size="sm" disabled title="阶段四开放">
