@@ -100,9 +100,17 @@ def validate_model_config(payload: ModelConfigIn) -> dict:
     if not outputs:
         errors.append("缺少输出层节点")
     if len(inputs) > 1:
-        errors.append("存在多个输入层，首版仅支持单输入")
+        errors.append(
+            "存在多个输入层（"
+            + "、".join(node.id for node in inputs)
+            + "），请只保留一个输入层"
+        )
     if len(outputs) > 1:
-        errors.append("存在多个输出层，首版仅支持单输出")
+        errors.append(
+            "存在多个输出层（"
+            + "、".join(node.id for node in outputs)
+            + "），请只保留一个输出层"
+        )
 
     # 成环检测：独立于其他校验执行，尽量一次把所有问题报全
     plan = None

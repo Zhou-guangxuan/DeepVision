@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { AxiosError } from 'axios'
 
 import { listDatasets } from '@/api/datasets'
@@ -28,6 +28,24 @@ const batchSize = ref(32)
 const learningRate = ref(0.001)
 const submitting = ref(false)
 const errorMessage = ref('')
+
+/**
+ * 打开对话框时先做结构预检，避免点下按钮才报错。
+ * 与后端 /api/graph/validate 的规则保持一致（单输入、单输出）。
+ */
+const structuralError = computed(() => {
+  const inputs = graph.nodes.filter((node) => node.type === 'input').length
+  const outputs = graph.nodes.filter((node) => node.type === 'output').length
+
+  if (graph.nodes.length === 0) return '画布为空，请先搭建网络'
+  if (inputs === 0) return '缺少输入层节点，请拖入一个输入层'
+  if (inputs > 1) return `画布上有 ${inputs} 个输入层，训练需要且仅需要 1 个`
+  if (outputs === 0) return '缺少输出层节点，请拖入一个输出层'
+  if (outputs > 1) return `画布上有 ${outputs} 个输出层，训练需要且仅需要 1 个`
+  return ''
+})
+
+const blockReason = computed(() => structuralError.value || errorMessage.value)
 
 async function loadDatasets(): Promise<void> {
   loadingDatasets.value = true
@@ -61,12 +79,12 @@ watch(
 async function onSubmit(): Promise<void> {
   if (submitting.value) return
 
-  if (datasetId.value === null) {
-    errorMessage.value = '请选择数据集'
+  if (structuralError.value) {
+    errorMessage.value = structuralError.value
     return
   }
-  if (graph.nodes.length === 0) {
-    errorMessage.value = '画布为空，请先搭建网络'
+  if (datasetId.value === null) {
+    errorMessage.value = '请选择数据集'
     return
   }
 
@@ -127,9 +145,12 @@ async function onSubmit(): Promise<void> {
                 :key="item.id"
                 :value="item.id"
               >
-                {{ item.name }}（{{ item.sample_count }} 行 · {{ item.feature_count }} 特征）
+                {{ item.name }}（{{ item.sample_count }} 行 · {{ item.feature_count }} 个特征列）
               </option>
             </select>
+            <p class="mt-1.5 text-[11px] leading-relaxed text-muted">
+              若数据含类别列，独热编码后实际输入维度会大于特征列数，输入层需按实际维度填写。
+            </p>
           </div>
 
           <div class="grid grid-cols-3 gap-3">
@@ -175,8 +196,8 @@ async function onSubmit(): Promise<void> {
             </div>
           </div>
 
-          <p v-if="errorMessage" class="text-xs text-danger" role="alert">
-            {{ errorMessage }}
+          <p v-if="blockReason" class="text-xs text-danger" role="alert">
+            {{ blockReason }}
           </p>
         </div>
 
@@ -184,7 +205,7 @@ async function onSubmit(): Promise<void> {
           <AppButton variant="secondary" @click="emit('close')">取消</AppButton>
           <AppButton
             :loading="submitting"
-            :disabled="datasets.length === 0"
+            :disabled="datasets.length === 0 || Boolean(structuralError)"
             @click="onSubmit"
           >
             开始训练

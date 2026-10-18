@@ -190,6 +190,32 @@ def test_merge_plan_concatenates_inputs(
     assert steps["n4"]["inputs"] == ["n2", "n3"]
 
 
+def test_multiple_inputs_message_lists_node_ids(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """多处输入层时报错文案应点名具体节点，便于用户定位。"""
+    payload = _config(
+        [
+            {"id": "i1", "type": "input", "params": {}},
+            {"id": "i2", "type": "input", "params": {}},
+            {"id": "o1", "type": "output", "params": {}},
+        ],
+        [
+            {"source": "i1", "target": "o1"},
+            {"source": "i2", "target": "o1"},
+        ],
+    )
+    body = client.post(
+        "/api/graph/validate", json=payload, headers=auth_headers
+    ).json()
+
+    assert body["valid"] is False
+    message = next(
+        error for error in body["errors"] if "多个输入层" in error
+    )
+    assert "i1" in message and "i2" in message
+
+
 def test_unreachable_node_rejected(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
