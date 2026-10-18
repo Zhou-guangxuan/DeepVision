@@ -46,6 +46,7 @@ class TrainingTask:
     status: str = "pending"
     history: list[dict] = field(default_factory=list)
     lifecycle: list[dict] = field(default_factory=list)
+    layer_stats: list[dict] = field(default_factory=list)
     subscribers: list[asyncio.Queue] = field(default_factory=list)
     loop: asyncio.AbstractEventLoop | None = None
     stop_event: threading.Event = field(default_factory=threading.Event)
@@ -151,6 +152,7 @@ def _finalize(
             "duration_sec": duration,
             "epochs": last_epoch,
             "history": list(task.history),
+            "layer_stats": list(task.layer_stats),
             "error": failure,
         },
         model_file_url=model_path,
@@ -160,6 +162,54 @@ def _finalize(
     session.commit()
     session.refresh(record)
     return record
+
+
+def _collect_layer_stats(
+    net,
+    sample_x: torch.Tensor,
+    plan_order: list[str],
+) -> list[dict]:
+    """收集逐层可视化数据：权重绝对值之和、梯度范数、激活均值。
+
+    由顶栏的「权重 / 梯度 / 激活」视图消费。
+    """
+    with torch.no_grad():
+        outputs = net.forward_intermediates(sample_x)
+
+    stats: list[dict] = []
+    for node_id in plan_order:
+        # nn.ModuleDict 没有 get()，只能先判断成员再取值
+        if node_id not in net.ops:
+            continue
+        module = net.ops[node_id]
+
+        parameters = list(module.parameters())
+        weight_norm = sum(
+            float(parameter.detach().abs().sum()) for parameter in parameters
+        )
+        grad_norm = sum(
+            float(parameter.grad.detach().abs().sum())
+            for parameter in parameters
+            if parameter.grad is not None
+        )
+
+        activation = outputs.get(node_id)
+        activation_mean = (
+            float(activation.abs().mean().item())
+            if activation is not None
+            else 0.0
+        )
+
+        stats.append(
+            {
+                "node_id": node_id,
+                "weight_norm": round(weight_norm, 6),
+                "grad_norm": round(grad_norm, 6),
+                "activation_mean": round(activation_mean, 6),
+            }
+        )
+
+    return stats
 
 
 def _run_training(task: TrainingTask) -> None:
@@ -281,10 +331,17 @@ def _run_training(task: TrainingTask) -> None:
                     accuracy = None
 
             last_epoch = epoch
+            layer_stats = _collect_layer_stats(
+                net, x_val[:32], task.plan["order"]
+            )
+            task.layer_stats = layer_stats
             metrics = {
                 "train_loss": round(total_loss / max(batches, 1), 6),
                 "val_loss": round(val_loss, 6),
                 "accuracy": None if accuracy is None else round(accuracy, 6),
+                "grad_norm": round(
+                    sum(item["grad_norm"] for item in layer_stats), 6
+                ),
             }
 
             _emit(
@@ -294,6 +351,7 @@ def _run_training(task: TrainingTask) -> None:
                     "epoch": epoch,
                     "total_epochs": epochs,
                     **metrics,
+                    "layer_stats": layer_stats,
                     "elapsed_ms": int((time.perf_counter() - started) * 1000),
                 },
             )

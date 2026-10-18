@@ -67,7 +67,8 @@ class DagNet(nn.Module):
 
             dims[node_id] = units
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_intermediates(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """返回拓扑序中每个节点的输出，供可视化使用。"""
         outputs: dict[str, torch.Tensor] = {}
 
         for step in self.steps:
@@ -81,7 +82,10 @@ class DagNet(nn.Module):
             merged = parts[0] if len(parts) == 1 else torch.cat(parts, dim=1)
             outputs[node_id] = self.ops[node_id](merged)
 
-        return outputs[self.output_id]
+        return outputs
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.forward_intermediates(x)[self.output_id]
 
 
 def build_dag_net(

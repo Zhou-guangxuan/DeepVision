@@ -145,12 +145,21 @@ def test_training_completes_and_saves_record(
     assert final["final_accuracy"] is not None
     assert final["record_id"] is not None
 
+    # 逐层统计用于顶栏的「权重 / 梯度 / 激活」视图
+    epoch_event = next(event for event in events if event["type"] == "epoch")
+    layer_stats = epoch_event["layer_stats"]
+    assert {item["node_id"] for item in layer_stats} == {"n2", "n3"}
+    for item in layer_stats:
+        assert item["weight_norm"] > 0
+        assert item["activation_mean"] >= 0
+
     records = client.get("/api/records", headers=auth_headers).json()
     assert records["total"] == 1
     record = records["items"][0]
     assert record["status"] == "success"
     assert record["task_id"] == task_id
     assert record["result_metrics"]["epochs"] == 3
+    assert len(record["result_metrics"]["layer_stats"]) == 2
 
 
 def test_stop_training(
