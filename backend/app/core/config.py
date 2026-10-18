@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     storage_dir: str = "./storage"
     max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
 
+    # AI 助教（未配置 Key 时自动降级为内置知识库）
+    llm_provider: str = "none"  # none | openai（兼容 GLM 等 OpenAI 协议服务）
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-4o-mini"
+    llm_timeout_seconds: float = 30.0
+    ai_rate_limit_per_minute: int = Field(default=20, ge=1)
+
     # 数据库
     database_url: str = "sqlite:///./deepvision.db"
 
