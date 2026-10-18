@@ -32,8 +32,9 @@ DeepVision/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # Axios 封装：auth、records、graph、datasets
+│   │   ├── api/             # Axios 封装：auth、records、graph、datasets、train、ai
 │   │   ├── components/
+│   │   │   ├── ai/          # AI 助教抽屉
 │   │   │   ├── canvas/      # 画布、节点、节点库、属性面板、小地图、工具栏
 │   │   │   ├── train/       # 训练启动对话框、拓扑流光
 │   │   │   └── ui/          # Button / Input / Card / Toast / Skeleton
@@ -107,7 +108,7 @@ cd backend
 
 ```bash
 cd backend
-.venv\Scripts\python.exe -m pytest    # 61 个用例
+.venv\Scripts\python.exe -m pytest    # 74 个用例
 ```
 
 ## 已实现（阶段一）
@@ -154,6 +155,16 @@ cd backend
 - 训练监控页：ECharts 双轴实时曲线（训练损失 / 验证损失 / 准确率）、进度条、拓扑流光、日志流、停止按钮
 - 训练结束（含失败与中止）自动写入 `training_records`
 
+## 已实现（阶段五）
+
+- AI 助教抽屉（全局悬浮入口，登录后所有页面可用）
+- 流式问答（SSE）：`meta` / `delta` / `done`，回答附带知识来源
+- **双模式**：配置 LLM Key 时走 OpenAI 兼容流式接口；未配置或调用失败时自动降级为内置知识库（离线可用）
+- 内置知识库 14 条（梯度消失、过拟合、学习率、激活函数、标准化等），关键词检索
+- 网络诊断：健康评分 + 问题列表 + 可应用建议（`units` / `features` / `activation` / `task`）
+- 「一键应用」直接修改画布节点参数，并进入撤销栈（可 `Ctrl+Z` 回退）
+- 输入敏感词拦截、输出脱敏、单用户限流 20 次/分钟
+
 ## 主要接口
 
 | 方法 | 路径 | 说明 | 认证 |
@@ -172,8 +183,10 @@ cd backend
 | POST | `/api/train` | 创建训练任务 | 是 |
 | POST | `/api/train/{task_id}/stop` | 停止训练 | 是 |
 | WS | `/ws/train/{task_id}?token=` | 训练指标实时推送 | 是 |
+| POST | `/api/ai/chat` | AI 助教问答（SSE 流式） | 是 |
+| POST | `/api/ai/diagnose` | 拓扑诊断与调参建议 | 是 |
 
 ## 后续阶段
 
-训练实时可视化已完成。后续：LLM 助教与 Agent 调参。
+五个阶段已全部完成。后续可选：DAG 汇合策略扩展（`add` / `multiply`）、历史记录页 `/history`、ECharts 按需引入、接真实 LLM 服务。
 详见 [设计文档.md](./设计文档.md) 第 8 章。
