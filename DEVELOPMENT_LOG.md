@@ -373,3 +373,57 @@
 - `package-lock.json` 已重新生成，部分依赖版本可能小幅上浮。
 - 「10MB 文件 3s 内完成预览」未实测（浏览器交互仍未验证）。
 - 缺失值策略仅对所选列生效；**标准化与类别编码尚未实现**，这是阶段四训练前的必要前置。
+
+---
+
+## 2026-10-18 · 完成阶段四开发（训练引擎与实时可视化）
+
+**类型**：功能开发
+**对应提交**：
+- `feat(backend): 训练引擎与 WebSocket 实时推送（阶段四）`
+- `feat(frontend): 训练监控页与实时图表（阶段四）`
+
+### 环境处置
+
+- PyTorch **2.14.1+cpu**、ECharts **6.1.0** 安装成功（torch 经阿里云镜像，约 200MB）。
+- 数据集表新增 `feature_columns`；自动生成的迁移在 SQLite 上因「NOT NULL 且无默认值」失败，改为先 `server_default='[]'` 回填再移除默认值。
+- 阶段三遗留的「标准化 / 类别编码」缺口在本次一并补齐。
+
+### 后端交付
+
+| 模块 | 职责 |
+| --- | --- |
+| `services/preprocessing.py` | 缺失值 → 类别独热 → z-score（统计量仅取训练集） → 8:2 划分；类别数上限 50 |
+| `services/dag_model.py` | 按执行计划物化 PyTorch 模块，汇合节点按前驱顺序 `concat` |
+| `services/training.py` | 任务注册表、后台线程执行、事件广播、历史回放、权重落盘、记录入库 |
+| `api/v1/train.py` | `POST /api/train`（校验拓扑与数据集归属）、`POST /api/train/{task_id}/stop` |
+| `api/realtime.py` | `WS /ws/train/{task_id}`（独立路径，不走 `/api` 前缀），心跳与重连回放 |
+
+- 训练结束（成功 / 失败 / 中止）都会写入 `training_records`，并保存 `storage/models/{user_id}/{task_id}.pt`。
+- 测试：`test_preprocessing.py`（7 个）+ `test_training.py`（7 个），用例如总数 47 → **61**。
+
+### 前端交付
+
+| 文件 | 职责 |
+| --- | --- |
+| `composables/useTrainingSocket.ts` | WebSocket 客户端 + 指数退避重连（1s→16s，最多 5 次） |
+| `views/TrainView.vue` | ECharts 双轴曲线、进度条、拓扑流光、日志流、停止训练 |
+| `components/train/StartTrainingDialog.vue` | 数据集选择与超参设置 |
+| `components/train/TrainingTopology.vue` | SVG 拓扑与前向流动画（`stroke-dashoffset`） |
+| `vite.config.ts` | 新增 `/ws` 代理（`ws: true`），否则开发环境 WS 无法连通 |
+
+### 验证结果
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | 61 个用例全部通过（含训练端到端与停止） |
+| 前端构建 | `vue-tsc --noEmit && vite build` 通过（726 模块） |
+| 端到端 | 起前后端 → 上传 CSV 201 → 创建训练 202 → 经 **Vite 的 WS 代理**收到 `started + 5×epoch + completed`；最终 `val_loss=0.707`、`record_id=2`；记录 `status=success` |
+
+### 已知限制
+
+- 「停止训练」有接口测试覆盖，但未在浏览器中实际操作验证。
+- 拓扑流光为**视觉表现**（固定节奏），不是逐 batch 的数据驱动；设计文档已注明。
+- 输入层特征数需手动与预处理后维度一致：类别特征会做独热编码从而扩展维度，不一致时后端会返回明确错误。
+- ECharts 全量引入使 TrainView chunk 达 1.1MB，未做按需引入优化。
+- 断线重连的浏览器行为未实测；服务端回放逻辑有实现但只有代码级保证。

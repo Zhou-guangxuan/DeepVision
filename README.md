@@ -35,6 +35,7 @@ DeepVision/
 │   │   ├── api/             # Axios 封装：auth、records、graph、datasets
 │   │   ├── components/
 │   │   │   ├── canvas/      # 画布、节点、节点库、属性面板、小地图、工具栏
+│   │   │   ├── train/       # 训练启动对话框、拓扑流光
 │   │   │   └── ui/          # Button / Input / Card / Toast / Skeleton
 │   │   ├── composables/     # 画布视口、登录页装饰动画
 │   │   ├── router/          # 路由与登录守卫
@@ -42,7 +43,7 @@ DeepVision/
 │   │   ├── styles/          # 设计 token 与组件样式
 │   │   ├── types/           # 拓扑类型与 model_config 契约
 │   │   ├── utils/           # 自研 CSV 解析与列类型推断
-│   │   └── views/           # LoginView / WorkspaceView / DataView
+│   │   └── views/           # LoginView / WorkspaceView / DataView / TrainView
 │   ├── package.json
 │   └── vite.config.ts
 ├── 设计文档.md
@@ -106,7 +107,7 @@ cd backend
 
 ```bash
 cd backend
-.venv\Scripts\python.exe -m pytest    # 47 个用例
+.venv\Scripts\python.exe -m pytest    # 61 个用例
 ```
 
 ## 已实现（阶段一）
@@ -143,6 +144,16 @@ cd backend
 - 后端 Pandas 解析：复用同一套规则，返回样本数、特征数、均值、方差与目标分布
 - 数据集落库与原始文件存储（`storage/datasets/`），列表与详情接口含归属校验
 
+## 已实现（阶段四）
+
+- 训练引擎：按执行计划物化 PyTorch 模块，支持任意前馈 DAG（汇合按 `concat`）
+- 预处理管线：z-score 标准化（仅用训练集统计量）、类别特征独热编码、8:2 训练/验证划分
+- 训练任务：后台线程执行、逐 epoch 指标、可随时停止、权重落盘 `storage/models/`
+- WebSocket 实时推送（`/ws/train/{token}`）：`started` / `epoch` / `completed` / `failed` / `stopped`，心跳 ping-pong
+- 断线重连：指数退避 1s→16s，最多 5 次；重连后服务端回放历史事件，前端按 epoch 去重
+- 训练监控页：ECharts 双轴实时曲线（训练损失 / 验证损失 / 准确率）、进度条、拓扑流光、日志流、停止按钮
+- 训练结束（含失败与中止）自动写入 `training_records`
+
 ## 主要接口
 
 | 方法 | 路径 | 说明 | 认证 |
@@ -158,8 +169,11 @@ cd backend
 | POST | `/api/datasets` | 上传并解析 CSV 数据集 | 是 |
 | GET | `/api/datasets` | 数据集列表（分页） | 是 |
 | GET | `/api/datasets/{id}` | 数据集详情与统计 | 是 |
+| POST | `/api/train` | 创建训练任务 | 是 |
+| POST | `/api/train/{task_id}/stop` | 停止训练 | 是 |
+| WS | `/ws/train/{task_id}?token=` | 训练指标实时推送 | 是 |
 
 ## 后续阶段
 
-拖拽式拓扑编辑器与 CSV 数据集上传已完成。后续：训练实时可视化 → LLM 助教与 Agent 调参。
+训练实时可视化已完成。后续：LLM 助教与 Agent 调参。
 详见 [设计文档.md](./设计文档.md) 第 8 章。
