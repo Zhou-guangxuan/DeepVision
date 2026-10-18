@@ -50,20 +50,6 @@ export const useGraphStore = defineStore('graph', () => {
     () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
   )
 
-  /** 存在分支或汇合：结构合法，但当前 MLP 训练器不支持 */
-  const hasBranch = computed(() => {
-    const indegree = new Map<string, number>()
-    const outdegree = new Map<string, number>()
-    for (const edge of edges.value) {
-      outdegree.set(edge.source, (outdegree.get(edge.source) ?? 0) + 1)
-      indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1)
-    }
-    return nodes.value.some(
-      (node) =>
-        (indegree.get(node.id) ?? 0) > 1 || (outdegree.get(node.id) ?? 0) > 1,
-    )
-  })
-
   function snapshot(): Snapshot {
     return {
       nodes: nodes.value.map((node) => ({ ...node, params: { ...node.params } })),
@@ -312,7 +298,6 @@ export const useGraphStore = defineStore('graph', () => {
     savedAt,
     canUndo,
     canRedo,
-    hasBranch,
     pushHistory,
     undo,
     redo,

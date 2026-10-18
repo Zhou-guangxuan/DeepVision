@@ -386,19 +386,6 @@ defineExpose({ addNodeAtCenter })
       />
     </div>
 
-    <!-- 分支提示 -->
-    <div
-      v-if="store.hasBranch"
-      class="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border px-3 py-1.5 text-xs"
-      :style="{
-        background: 'rgba(251, 191, 36, 0.12)',
-        borderColor: 'rgba(251, 191, 36, 0.4)',
-        color: 'var(--warning)',
-      }"
-    >
-      当前拓扑存在分支或汇合，训练仅支持链式结构
-    </div>
-
     <!-- 空状态 -->
     <div
       v-if="store.nodes.length === 0"

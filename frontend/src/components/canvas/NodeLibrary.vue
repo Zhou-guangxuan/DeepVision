@@ -82,8 +82,8 @@ function onDragStart(event: DragEvent, type: NodeType): void {
 
     <div class="border-t px-4 py-3" :style="{ borderColor: 'var(--border-subtle)' }">
       <p class="text-[11px] leading-relaxed text-muted">
-        当前版本训练仅支持<b class="font-medium text-secondary">链式结构</b>，
-        分支与汇合可以画出但无法训练。
+        支持分支与汇合：多个前驱的节点会按
+        <b class="font-medium text-secondary">特征维 concat</b> 合并。
       </p>
     </div>
   </aside>
