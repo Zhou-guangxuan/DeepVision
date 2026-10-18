@@ -1,0 +1,385 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import * as echarts from 'echarts'
+import type { ECharts } from 'echarts'
+
+import { stopTraining } from '@/api/train'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppCard from '@/components/ui/AppCard.vue'
+import TrainingTopology from '@/components/train/TrainingTopology.vue'
+import {
+  useTrainingSocket,
+  type TrainingEvent,
+  type TrainingSocketState,
+} from '@/composables/useTrainingSocket'
+import { useGraphStore } from '@/stores/graph'
+import { useToastStore } from '@/stores/toast'
+
+type TrainStatus = 'connecting' | 'running' | 'completed' | 'failed' | 'stopped'
+
+interface LogLine {
+  id: number
+  text: string
+}
+
+const route = useRoute()
+const router = useRouter()
+const graph = useGraphStore()
+const toast = useToastStore()
+
+const taskId = String(route.params.taskId ?? '')
+
+const chartRef = ref<HTMLElement | null>(null)
+const logRef = ref<HTMLElement | null>(null)
+let chart: ECharts | null = null
+
+const status = ref<TrainStatus>('connecting')
+const socketState = ref<TrainingSocketState>('connecting')
+const totalEpochs = ref(0)
+const currentEpoch = ref(0)
+const logs = ref<LogLine[]>([])
+const stopping = ref(false)
+const failureReason = ref('')
+const finalLoss = ref<number | null>(null)
+const finalAccuracy = ref<number | null>(null)
+
+const epochSeries = ref<number[]>([])
+const trainLossSeries = ref<(number | null)[]>([])
+const valLossSeries = ref<(number | null)[]>([])
+const accuracySeries = ref<(number | null)[]>([])
+
+const seenEpochs = new Set<number>()
+let logSeed = 0
+
+const progress = computed(() => {
+  if (totalEpochs.value === 0) return 0
+  return Math.min(100, Math.round((currentEpoch.value / totalEpochs.value) * 100))
+})
+
+const statusText: Record<TrainStatus, string> = {
+  connecting: '连接中',
+  running: '训练中',
+  completed: '已完成',
+  failed: '失败',
+  stopped: '已中止',
+}
+
+const statusBadge: Record<TrainStatus, string> = {
+  connecting: 'dv-badge--neutral',
+  running: 'dv-badge--warning',
+  completed: 'dv-badge--success',
+  failed: 'dv-badge--danger',
+  stopped: 'dv-badge--neutral',
+}
+
+function format(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  return Number(value).toFixed(4)
+}
+
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+async function pushLog(text: string): Promise<void> {
+  logSeed += 1
+  logs.value.push({ id: logSeed, text })
+  await nextTick()
+  if (logRef.value) {
+    logRef.value.scrollTop = logRef.value.scrollHeight
+  }
+}
+
+function baseOption(): echarts.EChartsOption {
+  return {
+    backgroundColor: 'transparent',
+    grid: { left: 56, right: 56, top: 40, bottom: 36 },
+    tooltip: { trigger: 'axis' },
+    legend: {
+      textStyle: { color: '#94a3b8' },
+      icon: 'roundRect',
+      top: 4,
+    },
+    xAxis: {
+      type: 'category',
+      data: [],
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: '#334155' } },
+      axisLabel: { color: '#94a3b8' },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'Loss',
+        nameTextStyle: { color: '#94a3b8' },
+        axisLabel: { color: '#94a3b8' },
+        splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)' } },
+      },
+      {
+        type: 'value',
+        name: 'Accuracy',
+        min: 0,
+        max: 1,
+        nameTextStyle: { color: '#94a3b8' },
+        axisLabel: { color: '#94a3b8' },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        name: '训练损失',
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        data: [],
+        itemStyle: { color: '#22d3ee' },
+        animationDuration: 300,
+      },
+      {
+        name: '验证损失',
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        data: [],
+        itemStyle: { color: '#8b5cf6' },
+        animationDuration: 300,
+      },
+      {
+        name: '准确率',
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        yAxisIndex: 1,
+        data: [],
+        itemStyle: { color: '#34d399' },
+        animationDuration: 300,
+      },
+    ],
+  }
+}
+
+function updateChart(): void {
+  if (!chart) return
+  chart.setOption({
+    xAxis: { data: epochSeries.value },
+    series: [
+      { data: trainLossSeries.value },
+      { data: valLossSeries.value },
+      { data: accuracySeries.value },
+    ],
+  })
+}
+
+function resizeChart(): void {
+  chart?.resize()
+}
+
+function onEvent(event: TrainingEvent): void {
+  switch (event.type) {
+    case 'started':
+      status.value = 'running'
+      totalEpochs.value = toNumber(event.total_epochs) ?? 0
+      void pushLog(
+        `训练开始：共 ${event.total_epochs} 个 epoch，输入维度 ${event.input_dim}`,
+      )
+      break
+
+    case 'epoch': {
+      const epoch = toNumber(event.epoch)
+      if (epoch === null || seenEpochs.has(epoch)) return
+      seenEpochs.add(epoch)
+
+      currentEpoch.value = epoch
+      epochSeries.value.push(epoch)
+      trainLossSeries.value.push(toNumber(event.train_loss))
+      valLossSeries.value.push(toNumber(event.val_loss))
+      accuracySeries.value.push(toNumber(event.accuracy))
+      updateChart()
+
+      const accuracyText =
+        event.accuracy === null ? '' : ` acc=${format(toNumber(event.accuracy))}`
+      void pushLog(
+        `Epoch ${epoch}: train_loss=${format(toNumber(event.train_loss))} val_loss=${format(toNumber(event.val_loss))}${accuracyText}`,
+      )
+      break
+    }
+
+    case 'completed':
+      status.value = 'completed'
+      finalLoss.value = toNumber(event.final_loss)
+      finalAccuracy.value = toNumber(event.final_accuracy)
+      void pushLog('训练完成，训练记录已保存')
+      toast.success('训练完成')
+      break
+
+    case 'failed':
+      status.value = 'failed'
+      failureReason.value = String(event.reason ?? '训练失败')
+      void pushLog(`训练失败：${failureReason.value}`)
+      toast.error('训练失败')
+      break
+
+    case 'stopped':
+      status.value = 'stopped'
+      void pushLog(`训练已中止于第 ${event.epoch} 个 epoch`)
+      toast.info('训练已中止')
+      break
+  }
+}
+
+useTrainingSocket(taskId, onEvent, (state) => {
+  socketState.value = state
+  if (state === 'closed' && status.value === 'connecting') {
+    status.value = 'failed'
+    failureReason.value = '无法连接到训练通道'
+  }
+})
+
+async function onStop(): Promise<void> {
+  stopping.value = true
+  try {
+    await stopTraining(taskId)
+  } catch {
+    // 拦截器已提示
+  } finally {
+    stopping.value = false
+  }
+}
+
+onMounted(() => {
+  graph.loadDraft()
+  if (chartRef.value) {
+    chart = echarts.init(chartRef.value)
+    chart.setOption(baseOption())
+    window.addEventListener('resize', resizeChart)
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeChart)
+  chart?.dispose()
+  chart = null
+})
+</script>
+
+<template>
+  <div class="flex h-screen flex-col overflow-hidden bg-base">
+    <header
+      class="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-5"
+      :style="{
+        borderColor: 'var(--border-subtle)',
+        background: 'var(--bg-surface)',
+      }"
+    >
+      <div class="flex min-w-0 items-center gap-3">
+        <AppButton variant="ghost" size="sm" @click="router.push('/workspace')">
+          ← 工作台
+        </AppButton>
+        <span class="text-sm font-medium text-primary">训练监控</span>
+        <span class="dv-badge" :class="statusBadge[status]">
+          {{ statusText[status] }}
+        </span>
+        <span
+          v-if="socketState === 'reconnecting'"
+          class="text-[11px] text-warning"
+        >
+          连接中断，正在重连…
+        </span>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="font-mono text-xs text-muted">
+          epoch {{ currentEpoch }} / {{ totalEpochs || '—' }}
+        </span>
+        <AppButton
+          variant="danger"
+          size="sm"
+          :loading="stopping"
+          :disabled="status !== 'running'"
+          @click="onStop"
+        >
+          停止训练
+        </AppButton>
+      </div>
+    </header>
+
+    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-3">
+      <!-- 指标曲线 -->
+      <AppCard class="flex min-h-0 flex-col lg:col-span-2" padding="none">
+        <div
+          class="flex items-center justify-between border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <h2 class="text-sm font-medium text-primary">训练指标</h2>
+          <span class="font-mono text-xs text-muted">{{ progress }}%</span>
+        </div>
+        <div class="h-1 w-full" :style="{ background: 'var(--border-subtle)' }">
+          <div
+            class="h-1 transition-all duration-emphasis"
+            :style="{
+              width: `${progress}%`,
+              backgroundImage: 'var(--brand-gradient)',
+            }"
+          />
+        </div>
+        <div ref="chartRef" class="min-h-0 flex-1" />
+      </AppCard>
+
+      <!-- 拓扑与结果 -->
+      <div class="flex min-h-0 flex-col gap-4">
+        <AppCard class="shrink-0" padding="none">
+          <div
+            class="border-b px-4 py-3"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <h2 class="text-sm font-medium text-primary">网络拓扑</h2>
+          </div>
+          <div class="h-[200px] p-2">
+            <TrainingTopology
+              :nodes="graph.nodes"
+              :edges="graph.edges"
+              :active="status === 'running'"
+            />
+          </div>
+        </AppCard>
+
+        <AppCard class="shrink-0">
+          <h2 class="text-sm font-medium text-primary">最终结果</h2>
+          <dl class="mt-3 space-y-2 text-xs">
+            <div class="flex justify-between">
+              <dt class="text-muted">最终验证损失</dt>
+              <dd class="font-mono text-primary">{{ format(finalLoss) }}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-muted">最终准确率</dt>
+              <dd class="font-mono text-primary">{{ format(finalAccuracy) }}</dd>
+            </div>
+          </dl>
+          <p v-if="failureReason" class="mt-3 text-xs leading-relaxed text-danger">
+            {{ failureReason }}
+          </p>
+        </AppCard>
+      </div>
+
+      <!-- 日志 -->
+      <AppCard class="min-h-0 lg:col-span-3" padding="none">
+        <div
+          class="border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <h2 class="text-sm font-medium text-primary">训练日志</h2>
+        </div>
+        <div
+          ref="logRef"
+          class="max-h-40 overflow-y-auto px-4 py-2 font-mono text-[11px] leading-relaxed text-secondary"
+        >
+          <p v-for="line in logs" :key="line.id">{{ line.text }}</p>
+          <p v-if="logs.length === 0" class="text-muted">等待训练开始…</p>
+        </div>
+      </AppCard>
+    </div>
+  </div>
+</template>

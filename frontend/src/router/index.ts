@@ -26,6 +26,11 @@ const router = createRouter({
       component: () => import('@/views/DataView.vue'),
     },
     {
+      path: '/train/:taskId',
+      name: 'train',
+      component: () => import('@/views/TrainView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/workspace',
     },

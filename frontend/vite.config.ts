@@ -18,6 +18,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
+      // WebSocket 实时通道：路径不带 /api 前缀，需要单独代理并开启 ws
+      '/ws': {
+        target: 'ws://127.0.0.1:8000',
+        ws: true,
+      },
     },
   },
 })

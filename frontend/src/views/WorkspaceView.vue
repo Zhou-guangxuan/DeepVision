@@ -6,6 +6,7 @@ import { validateGraph } from '@/api/graph'
 import NetworkCanvas from '@/components/canvas/NetworkCanvas.vue'
 import NodeLibrary from '@/components/canvas/NodeLibrary.vue'
 import PropertyPanel from '@/components/canvas/PropertyPanel.vue'
+import StartTrainingDialog from '@/components/train/StartTrainingDialog.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGraphStore } from '@/stores/graph'
@@ -18,6 +19,7 @@ const toast = useToastStore()
 const router = useRouter()
 
 const canvasRef = ref<{ addNodeAtCenter: (type: NodeType) => void } | null>(null)
+const showTrainingDialog = ref(false)
 const projectName = ref('未命名项目')
 const validating = ref(false)
 
@@ -88,6 +90,11 @@ function logout(): void {
   toast.info('已退出登录')
   void router.replace('/login')
 }
+
+function onTrainingStarted(taskId: string): void {
+  showTrainingDialog.value = false
+  void router.push(`/train/${taskId}`)
+}
 </script>
 
 <template>
@@ -128,7 +135,7 @@ function logout(): void {
         <AppButton variant="secondary" size="sm" @click="router.push('/data')">
           数据集
         </AppButton>
-        <AppButton variant="ghost" size="sm" disabled title="阶段四开放">
+        <AppButton size="sm" @click="showTrainingDialog = true">
           开始训练
         </AppButton>
         <span
@@ -161,5 +168,11 @@ function logout(): void {
         @remove="onRemoveNode"
       />
     </div>
+
+    <StartTrainingDialog
+      :open="showTrainingDialog"
+      @close="showTrainingDialog = false"
+      @started="onTrainingStarted"
+    />
   </div>
 </template>
