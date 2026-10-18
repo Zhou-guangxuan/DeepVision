@@ -39,6 +39,11 @@ def _read_dataframe(raw: bytes) -> pd.DataFrame:
     raise CsvParseError("文件编码无法识别，请使用 UTF-8 或 GBK") from last_error
 
 
+def read_csv_bytes(raw: bytes) -> pd.DataFrame:
+    """公开入口：解析 CSV 字节流（编码自动探测）。"""
+    return _read_dataframe(raw)
+
+
 def describe_columns(df: pd.DataFrame) -> list[dict]:
     """推断每列类型并统计缺失值数量。"""
     columns: list[dict] = []

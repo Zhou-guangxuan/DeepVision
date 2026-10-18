@@ -70,3 +70,26 @@ def auth_headers(
     resp = client.post("/api/auth/login", json=user_payload)
     assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+@pytest.fixture()
+def train_env(tmp_path, monkeypatch):
+    """把训练、WebSocket 与数据集存储都指向测试环境。
+
+    训练在线程里跑，直接用模块级 SessionLocal，无法通过 FastAPI 依赖覆盖，
+    因此这里替换模块属性。
+    """
+    from app.core.config import Settings
+
+    settings = Settings(storage_dir=str(tmp_path / "storage"))
+    monkeypatch.setattr(
+        "app.services.training.SessionLocal", TestingSessionLocal
+    )
+    monkeypatch.setattr("app.api.realtime.SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(
+        "app.services.training.get_settings", lambda: settings
+    )
+    monkeypatch.setattr(
+        "app.api.v1.datasets.get_settings", lambda: settings
+    )
+    return settings

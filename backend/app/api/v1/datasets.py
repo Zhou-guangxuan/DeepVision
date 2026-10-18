@@ -87,6 +87,7 @@ async def create_dataset(
         user_id=current_user.id,
         name=name or filename,
         columns_meta=result["columns_meta"],
+        feature_columns=parsed_features,
         target_column=target_column,
         missing_strategy=missing_strategy,
         stats=result["stats"].model_dump(),
