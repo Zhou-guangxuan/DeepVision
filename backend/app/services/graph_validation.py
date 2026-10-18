@@ -1,12 +1,16 @@
 """网络拓扑结构校验。
 
-前端在保存草稿与开始训练前调用；阶段四的训练引擎复用同一套规则，
+前端在保存草稿与开始训练前调用；阶段四的训练引擎复用同一套规则与执行计划，
 保证「画布能搭出来的结构」与「后端能构建的模型」始终一致。
+
+支持的拓扑：任意前馈有向无环图（DAG），允许分支与汇合。
+汇合语义：多前驱节点在特征维按前驱声明顺序拼接（concat）。
 
 校验分两级：
 
-- errors   —— 结构非法，无法训练（成环、孤立引用、自连、重复连线等）
-- warnings —— 结构合法，但当前版本（MLP）无法直接训练，例如分支 / 汇合
+- errors   —— 结构非法，无法生成执行计划（成环、悬浮引用、自连、重复连线、
+              多输入/多输出、存在无法从输入层到达的节点等）
+- warnings —— 结构合法但存在可疑之处（例如某节点的输出不会影响最终结果）
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from app.schemas.graph import ModelConfigIn
+from app.services.dag import build_execution_plan
 
 NODE_TYPES = {"input", "hidden", "output"}
 
@@ -29,43 +34,32 @@ def _dedupe(items: list[str]) -> list[str]:
     return result
 
 
-def _has_cycle(node_ids: list[str], adjacency: dict[str, list[str]]) -> bool:
-    """迭代式 DFS 检测有向环（避免深层网络触发递归上限）。"""
-    white, gray, black = 0, 1, 2
-    color = {node_id: white for node_id in node_ids}
-
-    def visit(start: str) -> bool:
-        stack: list[tuple[str, int]] = [(start, 0)]
-        color[start] = gray
-        while stack:
-            node, index = stack[-1]
-            neighbours = adjacency.get(node, [])
-            if index < len(neighbours):
-                stack[-1] = (node, index + 1)
-                nxt = neighbours[index]
-                if color.get(nxt) == gray:
-                    return True
-                if color.get(nxt) == white:
-                    color[nxt] = gray
-                    stack.append((nxt, 0))
-            else:
-                color[node] = black
-                stack.pop()
-        return False
-
-    for node_id in node_ids:
-        if color[node_id] == white and visit(node_id):
-            return True
-    return False
+def _reachable(start: str, adjacency: dict[str, list[str]]) -> set[str]:
+    """从 start 出发能到达的所有节点（含 start）。"""
+    visited: set[str] = set()
+    stack = [start]
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        for nxt in adjacency.get(current, []):
+            stack.append(nxt)
+    return visited
 
 
 def validate_model_config(payload: ModelConfigIn) -> dict:
-    """校验拓扑结构，返回 {valid, errors, warnings}。"""
+    """校验拓扑结构，返回 {valid, errors, warnings, execution_plan}。"""
     errors: list[str] = []
     warnings: list[str] = []
 
     if not payload.nodes:
-        return {"valid": False, "errors": ["拓扑为空，至少需要一个输入层与一个输出层"], "warnings": []}
+        return {
+            "valid": False,
+            "errors": ["拓扑为空，至少需要一个输入层与一个输出层"],
+            "warnings": [],
+            "execution_plan": None,
+        }
 
     ids = [node.id for node in payload.nodes]
     if len(ids) != len(set(ids)):
@@ -94,42 +88,56 @@ def validate_model_config(payload: ModelConfigIn) -> dict:
             errors.append(f"输入层 {edge.target} 不能作为连线的终点")
 
     adjacency: dict[str, list[str]] = defaultdict(list)
-    indegree: dict[str, int] = defaultdict(int)
     for edge in payload.edges:
         if edge.source in node_map and edge.target in node_map:
             adjacency[edge.source].append(edge.target)
-            indegree[edge.target] += 1
-
-    if _has_cycle(ids, adjacency):
-        errors.append("拓扑中存在环，神经网络必须是有向无环图")
 
     inputs = [n for n in payload.nodes if n.type == "input"]
     outputs = [n for n in payload.nodes if n.type == "output"]
+
     if not inputs:
         errors.append("缺少输入层节点")
     if not outputs:
         errors.append("缺少输出层节点")
     if len(inputs) > 1:
-        warnings.append("存在多个输入层，首版仅支持单输入")
+        errors.append("存在多个输入层，首版仅支持单输入")
     if len(outputs) > 1:
-        warnings.append("存在多个输出层，首版仅支持单输出")
+        errors.append("存在多个输出层，首版仅支持单输出")
 
-    # 链式约束：后端训练器（阶段四）按顺序层构建 MLP，无法处理分支与汇合
-    outdegree = {node_id: len(adjacency.get(node_id, [])) for node_id in ids}
-    for node_id in ids:
-        if indegree.get(node_id, 0) > 1 or outdegree.get(node_id, 0) > 1:
-            warnings.append("拓扑存在分支或汇合，当前版本训练仅支持链式结构")
-            break
+    # 成环检测：独立于其他校验执行，尽量一次把所有问题报全
+    plan = None
+    acyclic = False
+    if all(
+        edge.source in node_map and edge.target in node_map
+        for edge in payload.edges
+    ):
+        plan = build_execution_plan(payload)
+        acyclic = plan is not None
+        if not acyclic:
+            errors.append("拓扑中存在环，神经网络必须是有向无环图")
 
-    # 孤立节点
-    if len(payload.nodes) > 1:
-        connected = {e.source for e in payload.edges} | {e.target for e in payload.edges}
-        for node in payload.nodes:
-            if node.id not in connected:
-                warnings.append(f"节点 {node.id} 未连接其他节点")
+    # 可达性：所有节点都必须从输入层可达，否则无法计算
+    if acyclic and len(inputs) == 1:
+        reachable = _reachable(inputs[0].id, adjacency)
+        for nid in [item for item in ids if item not in reachable]:
+            errors.append(f"节点 {nid} 无法从输入层到达")
+
+    # 反向可达：节点输出应能影响最终结果，否则是死分支
+    if acyclic and len(outputs) == 1:
+        reverse: dict[str, list[str]] = defaultdict(list)
+        for edge in payload.edges:
+            reverse[edge.target].append(edge.source)
+        useful = _reachable(outputs[0].id, reverse)
+        for nid in ids:
+            if nid not in useful:
+                warnings.append(f"节点 {nid} 的输出不会影响最终结果")
+
+    if errors:
+        plan = None
 
     return {
         "valid": not errors,
         "errors": _dedupe(errors),
         "warnings": _dedupe(warnings),
+        "execution_plan": plan,
     }

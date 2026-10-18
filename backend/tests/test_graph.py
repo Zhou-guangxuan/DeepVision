@@ -130,10 +130,13 @@ def test_unknown_node_reference_rejected(
     assert any("不存在" in error for error in body["errors"])
 
 
-def test_branch_reported_as_warning(
+def test_branch_is_valid_and_has_plan(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
-    """分支结构合法（DAG），但当前 MLP 训练器不支持，应给 warning 而非 error。"""
+    """分支结构是合法拓扑，应当通过校验并生成执行计划。
+
+    n3 是死分支（输出不影响最终结果），因此只给 warning。
+    """
     payload = _config(
         [
             {"id": "n1", "type": "input", "params": {}},
@@ -151,12 +154,46 @@ def test_branch_reported_as_warning(
         "/api/graph/validate", json=payload, headers=auth_headers
     ).json()
     assert body["valid"] is True
-    assert any("分支" in warning for warning in body["warnings"])
+    assert body["execution_plan"] is not None
+    assert any("不会影响最终结果" in warning for warning in body["warnings"])
 
 
-def test_disconnected_node_reported_as_warning(
+def test_merge_plan_concatenates_inputs(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
+    """汇合节点：两个隐藏层同时连到输出层，执行计划应按 concat 合并。"""
+    payload = _config(
+        [
+            {"id": "n1", "type": "input", "params": {}},
+            {"id": "n2", "type": "hidden", "params": {}},
+            {"id": "n3", "type": "hidden", "params": {}},
+            {"id": "n4", "type": "output", "params": {}},
+        ],
+        [
+            {"source": "n1", "target": "n2"},
+            {"source": "n1", "target": "n3"},
+            {"source": "n2", "target": "n4"},
+            {"source": "n3", "target": "n4"},
+        ],
+    )
+    body = client.post(
+        "/api/graph/validate", json=payload, headers=auth_headers
+    ).json()
+    assert body["valid"] is True, body["errors"]
+
+    plan = body["execution_plan"]
+    assert plan["merge"] == "concat"
+    assert plan["order"][0] == "n1"
+    assert plan["order"][-1] == "n4"
+
+    steps = {step["node_id"]: step for step in plan["steps"]}
+    assert steps["n4"]["inputs"] == ["n2", "n3"]
+
+
+def test_unreachable_node_rejected(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """无法从输入层到达的节点无法参与计算，应报错。"""
     payload = _config(
         [
             {"id": "n1", "type": "input", "params": {}},
@@ -168,5 +205,5 @@ def test_disconnected_node_reported_as_warning(
     body = client.post(
         "/api/graph/validate", json=payload, headers=auth_headers
     ).json()
-    assert body["valid"] is True
-    assert any("未连接" in warning for warning in body["warnings"])
+    assert body["valid"] is False
+    assert any("无法从输入层到达" in error for error in body["errors"])
