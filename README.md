@@ -129,7 +129,8 @@ cd backend
 - 撤销 / 重做 50 步；Delete 删除；Ctrl+Z / Ctrl+Y / Ctrl+S
 - 空状态引导与「三层 MLP 快速模板」
 - 草稿 2s 防抖自动保存到 localStorage，刷新后可恢复
-- 后端 `POST /api/graph/validate`：成环、自连、重复连线、悬空引用、分支告警
+- 支持分支与汇合（任意前馈 DAG），汇合节点按特征维 `concat` 合并
+- 后端 `POST /api/graph/validate`：成环、自连、重复连线、悬空引用校验，并返回执行计划（拓扑序 + 前驱）
 
 ## 主要接口
 
