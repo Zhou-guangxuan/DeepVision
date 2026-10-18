@@ -20,7 +20,7 @@
 DeepVision/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # 路由：auth、records
+│   │   ├── api/v1/          # 路由：auth、records、graph
 │   │   ├── core/            # 配置、安全（argon2 + JWT）、当前用户依赖
 │   │   ├── db/              # 引擎、会话、声明式基类
 │   │   ├── models/          # User / Dataset / TrainingRecord
@@ -32,12 +32,15 @@ DeepVision/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # Axios 实例与接口封装
-│   │   ├── components/ui/   # Button / Input / Card / Toast / Skeleton
-│   │   ├── composables/     # 登录页拓扑装饰动画
+│   │   ├── api/             # Axios 封装：auth、records、graph
+│   │   ├── components/
+│   │   │   ├── canvas/      # 画布、节点、节点库、属性面板、小地图、工具栏
+│   │   │   └── ui/          # Button / Input / Card / Toast / Skeleton
+│   │   ├── composables/     # 画布视口、登录页装饰动画
 │   │   ├── router/          # 路由与登录守卫
-│   │   ├── stores/          # Pinia：auth、toast
+│   │   ├── stores/          # Pinia：auth、toast、graph
 │   │   ├── styles/          # 设计 token 与组件样式
+│   │   ├── types/           # 拓扑类型与 model_config 契约
 │   │   └── views/           # LoginView / WorkspaceView
 │   ├── package.json
 │   └── vite.config.ts
@@ -102,7 +105,7 @@ cd backend
 
 ```bash
 cd backend
-.venv\Scripts\python.exe -m pytest    # 22 个用例
+.venv\Scripts\python.exe -m pytest    # 32 个用例
 ```
 
 ## 已实现（阶段一）
@@ -116,6 +119,18 @@ cd backend
 - Axios 拦截器：自动携带 Token，401 自动清理凭证并跳转登录，失败统一 Toast
 - 基础组件库：Button / Input / Card / Toast / Skeleton
 
+## 已实现（阶段二）
+
+- 画布编辑器：SVG 渲染、点阵网格、贝塞尔连线
+- 节点库拖拽入画布（也可点击添加到中央）
+- 节点拖动、属性面板实时编辑（输入 / 隐藏 / 输出三类参数）
+- 连线交互：从输出端口拖出，成环、自连、重复连线被拒绝并给出提示
+- 缩放 25%–400%（以光标为锚点）、空格或中键平移、小地图导航
+- 撤销 / 重做 50 步；Delete 删除；Ctrl+Z / Ctrl+Y / Ctrl+S
+- 空状态引导与「三层 MLP 快速模板」
+- 草稿 2s 防抖自动保存到 localStorage，刷新后可恢复
+- 后端 `POST /api/graph/validate`：成环、自连、重复连线、悬空引用、分支告警
+
 ## 主要接口
 
 | 方法 | 路径 | 说明 | 认证 |
@@ -127,8 +142,9 @@ cd backend
 | POST | `/api/records` | 保存训练记录 | 是 |
 | GET | `/api/records/{id}` | 记录详情 | 是 |
 | DELETE | `/api/records/{id}` | 删除记录 | 是 |
+| POST | `/api/graph/validate` | 校验网络拓扑结构 | 是 |
 
 ## 后续阶段
 
-拖拽式拓扑编辑器 → CSV 上传与预处理 → 训练实时可视化 → LLM 助教与 Agent 调参。
+拖拽式拓扑编辑器已完成。后续：CSV 上传与预处理 → 训练实时可视化 → LLM 助教与 Agent 调参。
 详见 [设计文档.md](./设计文档.md) 第 8 章。

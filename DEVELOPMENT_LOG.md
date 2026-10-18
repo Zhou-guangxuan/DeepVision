@@ -207,3 +207,57 @@
 - 统一虚拟环境（根 `.venv` 或 `backend\.venv` 二选一），避免后续混淆。
 - `admin/123456` 为弱口令，公网部署前必须删除或改密。
 - 阶段二开工前需先决策：画布是否限制为链式结构（设计文档 §2.2 与 §5.3 的 DAG 冲突）。
+
+---
+
+## 2026-10-18 · 完成阶段二开发（拖拽式拓扑编辑器）
+
+**类型**：功能开发
+**对应提交**：
+- `feat(backend): 新增拓扑校验接口（阶段二）`
+- `feat(frontend): 拖拽式网络拓扑编辑器（阶段二）`
+
+### 开工决策
+
+1. **图可视化采用自研 SVG，不引入 G6**。设计文档 §8 允许二选一；G6 v5 的 API 变动大，且无法在浏览器中实时调试，自研可完全控制交互且能用构建验证。已同步修改设计文档 §3.2 的技术选型表。
+2. **画布允许任意 DAG，但训练仅支持链式结构**。分支 / 汇合在结构上合法，后端校验返回 warning，训练入口据此拦截。用于消解设计文档 §2.2（仅 MLP）与 §5.3（任意 DAG）的矛盾；已作为「实现决策」写入 §8 阶段二。
+
+### 后端交付
+
+- `POST /api/graph/validate`（需登录），返回 `{ valid, errors, warnings }`。
+- `app/services/graph_validation.py`：节点 id 唯一性、连线端点存在性、自连、重复连线、输入层不可作为终点、输出层不可作为起点、成环检测（迭代 DFS，避免深层递归）、单输入 / 单输出校验、分支与孤立节点告警。
+- `app/schemas/graph.py`：`ModelConfigIn` / `GraphValidationResult`，与 §6.3 契约一致。
+- `backend/tests/test_graph.py`：10 个用例覆盖上述规则。
+
+### 前端交付
+
+| 文件 | 职责 |
+| --- | --- |
+| `types/graph.ts` | 节点 / 边 / `model_config` 契约、节点默认参数、节点摘要 |
+| `stores/graph.ts` | 拓扑状态、连线校验（成环 / 自连 / 重复）、撤销重做（50 步）、快速模板、草稿读写 |
+| `composables/useCanvasViewport.ts` | 视口缩放（25%–400%，以光标为锚点）与平移 |
+| `components/canvas/NetworkCanvas.vue` | 画布主体：网格、贝塞尔连线、拖拽、连线交互、键盘快捷键 |
+| `components/canvas/GraphNode.vue` | 节点渲染与端口 |
+| `components/canvas/NodeLibrary.vue` | 节点库，支持拖拽入画布与点击添加 |
+| `components/canvas/PropertyPanel.vue` | 三类节点的参数编辑 |
+| `components/canvas/CanvasMinimap.vue` | 小地图与视口框，点击可导航 |
+| `components/canvas/CanvasToolbar.vue` | 撤销 / 重做、缩放、模板、清空、校验、保存状态 |
+| `views/WorkspaceView.vue` | 三栏工作台：节点库 + 画布 + 属性面板 |
+| `api/graph.ts` | 调用后端拓扑校验 |
+
+同时新增 `.dv-input-plain` / `.dv-select` 两个通用表单样式类。
+
+### 验证结果
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | 32 个用例全部通过（阶段一 22 + 阶段二 10） |
+| 前端构建 | `vue-tsc --noEmit && vite build` 通过（120 个模块） |
+| 集成验证 | 同时启动前后端后：Vite 代理下 `admin/123456` 登录成功；链式拓扑返回 `valid=true`；分支拓扑返回 `valid=true` 且 warnings 含「分支或汇合」 |
+
+### 未验证 / 已知限制
+
+- 画布的**实际交互**（拖拽、连线、缩放、撤销重做）**未在浏览器中操作验证**，目前只有类型检查、构建与接口层面的证据。建议按 §8 阶段二验收清单人工过一遍。
+- 「100 节点下拖动帧率不低于 50fps」未实测。
+- 阶段一工作台的训练记录列表已移除，按设计文档 §5.6 归入后续 `/history` 页面；训练记录相关 API 保持不变。
+- 属性面板连续修改参数会各占一步撤销记录。
