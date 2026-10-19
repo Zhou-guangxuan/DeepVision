@@ -831,3 +831,56 @@
 ### 待办
 
 - 若提亮后仍偏暗，先拖右上角「亮度」滑杆到 1.6–2.0 再看；仍不对则需检查是否为显示器色彩配置或浏览器强制色彩管理。
+
+---
+
+## 2026-10-19 · 完成第三大阶段（观察 / 注意力 / 投影 / Markdown / 落库）
+
+**类型**：功能开发
+**对应提交**：
+- `feat: 完成第三大阶段（传播观察 / 注意力 / 投影 / Markdown / 记录落库）`
+- `docs: 第三大阶段完成（v4.4）`
+
+### 后端
+
+| 变更 | 说明 |
+| --- | --- |
+| 任务保留模型 | 训练结束（含中止）把 `model` / `features` / `labels` 留在 `LabTask` 上 |
+| `GET /api/lab/{task_id}/inspect` | 取一条样本做前向 + 反向：`retain_grad()` 收集逐层激活与梯度，输出 `softmax` 概率、输入注意力 `\|∂loss/∂x × x\|` |
+| `GET /api/lab/{task_id}/projection` | 取指定层激活 → 中心化 → `numpy.linalg.svd` → 前两个主成分，最多 600 点，附解释度 |
+| 未训练保护 | 两个接口在模型未就绪时返回 `409 LAB_NOT_READY` |
+| 记录落库 | `training_records` 新增 `source` 列（迁移 `3f1c9d7a2b64`）；实验室训练写入 `source='lab'`、`dataset_id=null`、末 200 个 epoch |
+| AI 引擎 | `ChatRequest` 新增 `mode`（auto / llm / offline），`stream_answer` 支持强制模式，未配置 Key 时明确提示降级 |
+
+测试：**84 passed**（新增 inspect / 注意力 / 投影 / 记录来源 / 未训练 409）。
+
+### 前端
+
+| 文件 | 内容 |
+| --- | --- |
+| `components/lab/LabInspector.vue` | 三标签弹窗：传播单步（上一步 / 下一步 + 激活与梯度条形图）、注意力（输入贡献）、投影（层切换 + Canvas 散点） |
+| `components/lab/LabNetwork3D.vue` | 新增 `highlight` 属性，输入节点按注意力放大并提亮 |
+| `views/LabView.vue` | 顶栏三项导航可点击打开弹窗；引擎三选一；Markdown 渲染（`marked` + `DOMPurify`）与排版样式 |
+
+构建通过（748 模块）。
+
+### 端到端验证
+
+| 步骤 | 结果 |
+| --- | --- |
+| `POST /api/lab/train` | 202 |
+| WS 训练 | `completed` |
+| `GET /inspect?index=3` | 200，3 层、首层 6 个单元、2 个注意力值，预测与真实标签一致 |
+| `GET /projection?layer=0` | 200，600 点，解释度 94.9% / 5.1% |
+| `GET /api/records` | 含 `source='lab'` 记录 |
+| `POST /api/ai/chat (mode=offline)` | `meta.mode = fallback`，符合预期 |
+
+### 遇到的问题
+
+8000 端口被一个**遗留的 multiprocessing 子进程**（PID 25696，父进程 18240 已退出）占用：新后端绑定失败退出，请求仍由旧进程处理，导致新路由 404。清理该子进程后重启恢复。
+
+### 未做
+
+- 注意力是 `|梯度 × 输入|` 的**输入贡献**，不是 Transformer 自注意力（当前教学模型是 MLP）。
+- t-SNE 投影、注意力随训练变化曲线、弹窗内导出图片，均列为后续。
+- 浏览器中的弹窗与 3D 高亮效果未人工验证（browser-skill 未连接）。
