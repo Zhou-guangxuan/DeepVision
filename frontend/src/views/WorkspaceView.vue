@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 import { useRouter } from 'vue-router'
 
 import { validateGraph } from '@/api/graph'
@@ -21,6 +28,11 @@ const VIEW_MODES: { value: ViewMode; label: string }[] = [
   { value: 'activation', label: '激活' },
 ]
 
+// three.js 体积较大，只有切到 3D 视图时才加载
+const Network3DView = defineAsyncComponent(
+  () => import('@/components/threed/Network3DView.vue'),
+)
+
 const auth = useAuthStore()
 const graph = useGraphStore()
 const toast = useToastStore()
@@ -28,6 +40,8 @@ const router = useRouter()
 
 const canvasRef = ref<{ addNodeAtCenter: (type: NodeType) => void } | null>(null)
 const showTrainingDialog = ref(false)
+/** 中央区在 2D 编辑与 3D 只读视图之间切换 */
+const is3D = ref(false)
 const projectName = ref('未命名项目')
 const validating = ref(false)
 
@@ -72,7 +86,12 @@ onBeforeUnmount(() => {
   window.clearTimeout(saveTimer)
 })
 
-function onAddNode(type: NodeType): void {
+async function onAddNode(type: NodeType): Promise<void> {
+  // 3D 视图下 2D 画布未挂载，先切回再添加
+  if (!canvasRef.value && is3D.value) {
+    is3D.value = false
+    await nextTick()
+  }
   canvasRef.value?.addNodeAtCenter(type)
 }
 
@@ -144,7 +163,8 @@ function onTrainingStarted(taskId: string): void {
           class="w-40 bg-transparent text-sm text-secondary outline-none transition-colors duration-fast hover:text-primary focus:text-primary"
           aria-label="项目名称"
         />
-        <span class="dv-badge dv-badge--neutral shrink-0">阶段二</span>        <span class="hidden text-[11px] text-muted md:inline">
+        <span class="dv-badge dv-badge--neutral shrink-0">阶段二</span>
+        <span class="hidden text-[11px] text-muted md:inline">
           {{ graph.savedAt ? '草稿已保存' : '草稿未保存' }}
         </span>
       </div>
@@ -186,6 +206,27 @@ function onTrainingStarted(taskId: string): void {
             {{ mode.label }}
           </button>
         </div>
+
+        <button
+          type="button"
+          class="ml-1 rounded-sm border px-2.5 py-1 text-xs transition-colors duration-fast"
+          :style="
+            is3D
+              ? {
+                  borderColor: 'var(--brand-cyan)',
+                  color: 'var(--brand-cyan)',
+                  background: 'rgba(34, 211, 238, 0.12)',
+                }
+              : {
+                  borderColor: 'var(--border-default)',
+                  color: 'var(--text-muted)',
+                }
+          "
+          :title="is3D ? '切换回 2D 编辑画布' : '切换为 3D 只读视图'"
+          @click="is3D = !is3D"
+        >
+          {{ is3D ? '2D 编辑' : '3D 视图' }}
+        </button>
       </div>
 
       <div class="flex items-center gap-2">
@@ -220,7 +261,9 @@ function onTrainingStarted(taskId: string): void {
       <NodeLibrary @add="onAddNode" />
 
       <main class="relative flex min-w-0 flex-1">
+        <Network3DView v-if="is3D" />
         <NetworkCanvas
+          v-else
           ref="canvasRef"
           @notify="onNotify"
           @validate="onValidate"
