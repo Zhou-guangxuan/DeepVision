@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401  确保模型注册到 metadata
+from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -31,6 +32,19 @@ def _schema() -> Iterator[None]:
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def _offline_llm(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """测试不读取本地 backend/.env 的大模型配置，始终走内置知识库。
+
+    否则开发者本地配了 Key 之后，测试会真的发起外部请求并改变断言结果。
+    """
+    monkeypatch.setenv("LLM_PROVIDER", "none")
+    monkeypatch.setenv("LLM_API_KEY", "")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture()

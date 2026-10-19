@@ -105,6 +105,26 @@ cd backend
 
 > 弱口令仅用于本地开发。本仓库为公开仓库，部署到公网前请删除该账号或更换密码。
 
+## AI 助教接入大模型（可选）
+
+不配置时使用内置知识库（14 条），功能完整、完全离线。要接大模型，在 `backend/.env` 中填：
+
+```env
+LLM_PROVIDER=openai                    # 任何兼容 OpenAI /chat/completions 的服务
+LLM_API_KEY=sk-xxx
+LLM_BASE_URL=https://api.deepseek.com/v1
+LLM_MODEL=deepseek-chat
+LLM_TIMEOUT_SECONDS=60
+LLM_VERIFY_SSL=true
+AI_RATE_LIMIT_PER_MINUTE=20
+```
+
+- 改完需**重启后端**（配置有进程内缓存）。
+- 验证：`POST /api/ai/chat` 的第一条 SSE 事件应为 `{"type":"meta","mode":"llm"}`；若是 `fallback`，说明调用失败已降级。
+- **TLS 说明**：默认用**系统证书库**校验。企业代理或安全软件注入自签根证书时，certifi 会报 `CERTIFICATE_VERIFY_FAILED`，系统证书库通常可通过；实在不行可设 `LLM_VERIFY_SSL=false`（降低安全性）。
+- 请求使用 `trust_env=False`，**不经过系统代理**，所以直连不通的服务需要换可达的 `LLM_BASE_URL`。
+
+
 ## 测试
 
 ```bash

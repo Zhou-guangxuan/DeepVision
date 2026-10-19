@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import ssl
 from collections.abc import AsyncIterator
 
 import httpx
@@ -21,6 +23,21 @@ from app.services import knowledge_base
 from app.services.ai_guard import sanitize_output
 
 CHUNK_SIZE = 24
+
+logger = logging.getLogger(__name__)
+
+
+def _ssl_verify() -> ssl.SSLContext | bool:
+    """返回 httpx 的 verify 参数。
+
+    默认使用**系统证书库**：企业代理或安全软件常会注入自签根证书，
+    这类根证书在 Windows 证书库里可信，但不在 certifi 里，直接用 certifi
+    会报 `CERTIFICATE_VERIFY_FAILED`。用户也可以显式关闭校验。
+    """
+    settings = get_settings()
+    if not settings.llm_verify_ssl:
+        return False
+    return ssl.create_default_context()
 
 
 def is_llm_enabled() -> bool:
@@ -76,7 +93,12 @@ async def stream_answer(
             async for event in _stream_llm(question):
                 yield event
             return
-        except Exception:  # noqa: BLE001 - 任何失败都降级，不阻塞用户
+        except Exception as exc:  # noqa: BLE001 - 任何失败都降级，不阻塞用户
+            logger.warning(
+                "大模型调用失败，已降级为内置知识库：%s: %s",
+                type(exc).__name__,
+                exc,
+            )
             yield {
                 "type": "meta",
                 "mode": "fallback",
@@ -118,7 +140,9 @@ async def _stream_llm(question: str) -> AsyncIterator[dict]:
     url = settings.llm_base_url.rstrip("/") + "/chat/completions"
 
     async with httpx.AsyncClient(
-        timeout=settings.llm_timeout_seconds, trust_env=False
+        timeout=settings.llm_timeout_seconds,
+        trust_env=False,
+        verify=_ssl_verify(),
     ) as client:
         async with client.stream(
             "POST", url, json=payload, headers=headers

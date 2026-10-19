@@ -884,3 +884,54 @@
 - 注意力是 `|梯度 × 输入|` 的**输入贡献**，不是 Transformer 自注意力（当前教学模型是 MLP）。
 - t-SNE 投影、注意力随训练变化曲线、弹窗内导出图片，均列为后续。
 - 浏览器中的弹窗与 3D 高亮效果未人工验证（browser-skill 未连接）。
+
+---
+
+## 2026-10-19 · 接通 DeepSeek 大模型
+
+**类型**：配置 + 缺陷修复
+**对应提交**：`fix(ai): 改用系统证书库校验 TLS 并接通 DeepSeek`
+
+### 配置
+
+`backend/.env`（已被 `.gitignore` 忽略）：
+
+```env
+LLM_PROVIDER=openai
+LLM_BASE_URL=https://api.deepseek.com/v1
+LLM_MODEL=deepseek-chat
+LLM_TIMEOUT_SECONDS=60
+```
+
+### 问题
+
+首次调用返回 `meta.mode = fallback`，即请求失败被静默降级。直接打 DeepSeek 得到真实错误：
+
+```
+httpx.ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED]
+certificate verify failed: self-signed certificate in certificate chain
+```
+
+本机的 HTTPS 被中间人（代理 / 安全软件）替换了证书链：该自签根证书在 **Windows 证书库**里可信，但不在 httpx 默认使用的 **certifi** 里，因此校验失败。用 `verify=False` 立即 200，证实是证书链问题而非网络或 Key 问题。
+
+### 修复
+
+| 变更 | 说明 |
+| --- | --- |
+| TLS 校验来源 | `ssl.create_default_context()`（系统证书库）替代 certifi |
+| 新配置项 | `LLM_VERIFY_SSL`（默认 `true`；确实不通时可设 `false` 跳过校验） |
+| 失败可观测 | 降级时用 `logger.warning` 打出异常类型与消息，不再静默 |
+| 测试隔离 | `conftest.py` 新增 autouse 夹具，强制 `LLM_PROVIDER=none`、清空 Key 并清理配置缓存，避免本地 `.env` 影响测试 |
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 系统证书库直连 DeepSeek | 200 |
+| `/api/ai/chat`（mode=auto） | `{"type":"meta","mode":"llm"}`，流式返回模型回答 |
+| 后端测试 | **84 passed**（修复前 `test_chat_fallback_stream_has_sources` 因读到本地 `.env` 而失败） |
+
+### 安全提醒
+
+- 该 Key 曾在对话中出现，建议在 DeepSeek 控制台轮换。
+- `.env` 已被 `.gitignore` 忽略；`.env.example` 只放占位符。

@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
     llm_timeout_seconds: float = 30.0
+    # 用系统证书库校验 TLS（企业代理/安全软件注入根证书时 certifi 会失败）；
+    # 确实无法通过时可设为 false 跳过校验，但会降低安全性。
+    llm_verify_ssl: bool = True
     ai_rate_limit_per_minute: int = Field(default=20, ge=1)
 
     # 数据库
