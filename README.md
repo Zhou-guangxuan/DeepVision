@@ -10,6 +10,7 @@
 | 层 | 技术 |
 | --- | --- |
 | 前端 | Vue 3 + TypeScript + Vite + Pinia + Vue Router + TailwindCSS + Axios |
+| 3D 可视化 | Three.js 0.186（按需加载） |
 | 后端 | FastAPI + SQLAlchemy 2 + Alembic + Pydantic v2 |
 | 认证 | JWT（PyJWT）+ argon2id 密码哈希 |
 | 数据库 | SQLite（开发）/ PostgreSQL（生产） |
@@ -164,6 +165,13 @@ cd backend
 - 网络诊断：健康评分 + 问题列表 + 可应用建议（`units` / `features` / `activation` / `task`）
 - 「一键应用」直接修改画布节点参数，并进入撤销栈（可 `Ctrl+Z` 回退）
 - 输入敏感词拦截、输出脱敏、单用户限流 20 次/分钟
+
+## 已实现（第二大阶段）
+
+- 顶栏视图切换：权重 / 梯度 / 激活三态，2D 画布与 3D 视图同步响应
+- 训练时产出逐层统计（权重绝对值之和、梯度范数、激活均值），随 epoch 推送并持久化到 `result_metrics.layer_stats`
+- **3D 只读拓扑视图**（Three.js）：发光球体按层着色、权重驱动连线粗细、激活呼吸动画、悬浮查看逐层数值
+- 3D 视图按需加载（独立 chunk），不影响 2D 编辑首屏
 
 ## 主要接口
 
