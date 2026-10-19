@@ -71,6 +71,8 @@ def test_lab_streams_epochs_and_visuals(
     assert "val_loss" in epoch
     assert "accuracy" in epoch
     assert "grad_norm" in epoch
+    # 逐 epoch 的输入注意力（输入 2 维）
+    assert len(epoch["attention"]) == 2
 
 
 def test_lab_pause_and_stop(
@@ -151,6 +153,7 @@ def test_lab_inspect_attention_and_projection(
     )
     assert projection.status_code == 200, projection.text
     data = projection.json()
+    assert data["method"] == "pca"
     assert data["points"]
     assert len(data["explained"]) == 2
     assert data["layer_count"] == 3
@@ -159,6 +162,28 @@ def test_lab_inspect_attention_and_projection(
     records = client.get("/api/records", headers=auth_headers).json()
     assert records["total"] == 1
     assert records["items"][0]["source"] == "lab"
+
+
+def test_lab_attention_history_and_tsne(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    task_id = _train(client, auth_headers, epochs=3)
+
+    history = client.get(f"/api/lab/{task_id}/attention", headers=auth_headers)
+    assert history.status_code == 200, history.text
+    body = history.json()
+    assert body["epochs"] == [1, 2, 3]
+    assert len(body["series"]) == 2
+    assert all(len(item["values"]) == 3 for item in body["series"])
+
+    tsne = client.get(
+        f"/api/lab/{task_id}/projection?layer=0&method=tsne", headers=auth_headers
+    )
+    assert tsne.status_code == 200, tsne.text
+    mapped = tsne.json()
+    assert mapped["method"] == "tsne"
+    assert mapped["explained"] == []
+    assert len(mapped["points"]) > 0
 
 
 def test_lab_inspect_requires_training(

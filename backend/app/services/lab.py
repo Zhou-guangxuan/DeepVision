@@ -318,6 +318,9 @@ def _run(task: LabTask) -> None:
                 if parameter.grad is not None
             )
 
+            # 注意力随 epoch 变化：取验证集前 32 条，按 |∂loss/∂x × x| 求特征均值
+            attention = _sample_attention(model, x_val[:32], y_val[:32])
+
             emit(
                 task,
                 {
@@ -328,6 +331,7 @@ def _run(task: LabTask) -> None:
                     "val_loss": round(val_loss, 6),
                     "accuracy": round(accuracy, 6),
                     "grad_norm": round(grad_norm, 6),
+                    "attention": attention,
                     "elapsed_ms": int((time.perf_counter() - started) * 1000),
                 },
             )
@@ -482,8 +486,135 @@ def inspect(task: LabTask, index: int) -> dict:
     return result
 
 
-def project(task: LabTask, layer_index: int, max_points: int = 600) -> dict:
-    """对指定隐藏层的输出做 PCA，降到二维用于散点展示。"""
+def _sample_attention(
+    model: nn.Module, x_sample: torch.Tensor, y_sample: torch.Tensor
+) -> list[float]:
+    """一批样本的平均输入注意力：|∂loss/∂x × x| 在样本维取均值。"""
+    model.zero_grad(set_to_none=True)
+    x = x_sample.clone().requires_grad_(True)
+
+    logits = model(x)
+    loss = nn.CrossEntropyLoss()(logits, y_sample)
+    loss.backward()
+
+    if x.grad is None:
+        model.zero_grad(set_to_none=True)
+        return [0.0] * int(x_sample.shape[1])
+
+    values = (x.grad * x).abs().mean(dim=0).detach().numpy()
+    model.zero_grad(set_to_none=True)
+    return [round(float(value), 6) for value in values]
+
+
+def _pca_coords(matrix: np.ndarray) -> tuple[np.ndarray, list[float]]:
+    """主成分分析：返回前两个主成分上的坐标与各自解释方差占比。"""
+    centered = matrix - matrix.mean(axis=0, keepdims=True)
+    left, singular, _ = np.linalg.svd(centered, full_matrices=False)
+    coords = left[:, :2] * singular[:2]
+
+    variance = singular**2
+    total = float(variance.sum()) or 1.0
+    explained = [round(float(value / total), 4) for value in variance[:2]]
+    return coords, explained
+
+
+def _tsne_coords(
+    matrix: np.ndarray,
+    perplexity: float = 25.0,
+    iterations: int = 300,
+    learning_rate: float = 200.0,
+    seed: int = 42,
+) -> np.ndarray:
+    """精简版精确 t-SNE（O(n²)），适合教学场景的几百个样本。
+
+    没有引入 scikit-learn：先按困惑度二分搜索每点的 σ 得到条件概率，
+    再对称化为联合概率 P，最后对低维坐标做带动量的梯度下降拟合 Q。
+    """
+    n = int(matrix.shape[0])
+    if n < 10:
+        raise ValueError("样本太少，无法做 t-SNE")
+
+    perplexity = min(perplexity, max(2.0, (n - 1) / 3.0))
+    target_entropy = np.log(perplexity)
+
+    squared = (matrix**2).sum(axis=1)
+    distances = squared[:, None] + squared[None, :] - 2 * matrix @ matrix.T
+    np.maximum(distances, 0, out=distances)
+    np.fill_diagonal(distances, 0.0)
+
+    conditional = np.zeros((n, n))
+    for i in range(n):
+        row = distances[i].copy()
+        row[i] = np.inf
+
+        beta = 1.0
+        beta_min, beta_max = 1e-20, 1e20
+        probabilities = np.full(n, 1.0 / n)
+
+        for _ in range(60):
+            weights = np.exp(-row * beta)
+            total = float(weights.sum())
+            if total <= 0:
+                probabilities = np.full(n, 1.0 / n)
+                break
+
+            probabilities = weights / total
+            entropy = float(-(probabilities * np.log(probabilities + 1e-12)).sum())
+            if abs(entropy - target_entropy) < 1e-5:
+                break
+
+            if entropy > target_entropy:
+                beta_min = beta
+                beta = beta * 2 if beta_max >= 1e20 else (beta + beta_max) / 2
+            else:
+                beta_max = beta
+                beta = beta / 2 if beta_min <= 1e-20 else (beta + beta_min) / 2
+
+        conditional[i] = probabilities
+
+    p = (conditional + conditional.T) / (2 * n)
+    p = np.maximum(p, 1e-12)
+
+    rng = np.random.default_rng(seed)
+    y = rng.normal(0, 1e-4, size=(n, 2))
+    velocity = np.zeros_like(y)
+    gains = np.ones_like(y)
+
+    for _ in range(iterations):
+        sum_y = (y**2).sum(axis=1)
+        similarities = 1.0 / (1.0 + sum_y[:, None] + sum_y[None, :] - 2 * y @ y.T)
+        np.fill_diagonal(similarities, 0.0)
+
+        total = float(similarities.sum()) or 1.0
+        q = similarities / total
+        weighted = (p - q) * similarities
+
+        gradient = 4 * (weighted.sum(axis=1)[:, None] * y - weighted @ y)
+        gains = np.where(
+            np.sign(gradient) != np.sign(velocity), gains + 0.2, gains * 0.8
+        )
+        np.maximum(gains, 0.01, out=gains)
+
+        velocity = 0.8 * velocity - learning_rate * gains * gradient
+        y += velocity
+        y -= y.mean(axis=0)
+
+    return y
+
+
+def project(
+    task: LabTask, layer_index: int, max_points: int = 600, method: str = "pca"
+) -> dict:
+    """对指定层的输出降维到二维：pca（线性）或 tsne（非线性）。"""
+    if task.model is None or task.features is None or task.labels is None:
+        raise ValueError("训练尚未开始，无法做降维投影")
+
+    if method not in {"pca", "tsne"}:
+        raise ValueError("不支持的投影方法")
+
+    # t-SNE 复杂度较高，限制点数以保证响应时间
+    if method == "tsne":
+        max_points = min(max_points, 300)
     if task.model is None or task.features is None or task.labels is None:
         raise ValueError("训练尚未开始，无法做降维投影")
 
@@ -509,20 +640,20 @@ def project(task: LabTask, layer_index: int, max_points: int = 600) -> dict:
         raise ValueError("层序号超出范围")
 
     matrix = hidden.detach().numpy().astype("float64")
-    centered = matrix - matrix.mean(axis=0, keepdims=True)
-    left, singular, _ = np.linalg.svd(centered, full_matrices=False)
-    coords = left[:, :2] * singular[:2]
+
+    if method == "tsne":
+        coords, explained = _tsne_coords(matrix), []
+    else:
+        coords, explained = _pca_coords(matrix)
 
     scale = float(np.abs(coords).max()) or 1.0
     coords = coords / scale
 
-    variance = singular**2
-    total = float(variance.sum()) or 1.0
-
     return {
         "layer_index": layer_index,
         "layer_count": sum(1 for module in model if isinstance(module, nn.Linear)),
-        "explained": [round(float(value / total), 4) for value in variance[:2]],
+        "method": method,
+        "explained": explained,
         "points": [
             {
                 "x": round(float(point[0]), 4),
@@ -530,5 +661,29 @@ def project(task: LabTask, layer_index: int, max_points: int = 600) -> dict:
                 "label": int(label),
             }
             for point, label in zip(coords, labels, strict=True)
+        ],
+    }
+
+
+def attention_history(task: LabTask) -> dict:
+    """逐 epoch 的输入注意力，用于观察「模型在关注哪些特征」如何变化。"""
+    events = [event for event in task.history if "attention" in event]
+    if not events:
+        raise ValueError("暂无训练数据，请先完成一次训练")
+
+    size = len(events[0]["attention"])
+    return {
+        "epochs": [event["epoch"] for event in events],
+        "series": [
+            {
+                "feature": index,
+                "values": [
+                    float(event["attention"][index])
+                    if index < len(event["attention"])
+                    else 0.0
+                    for event in events
+                ],
+            }
+            for index in range(size)
         ],
     }

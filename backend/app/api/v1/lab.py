@@ -112,16 +112,31 @@ def inspect_task(
         ) from exc
 
 
-@router.get("/{task_id}/projection", summary="指定层的 PCA 降维投影")
+@router.get("/{task_id}/projection", summary="指定层的降维投影（PCA / t-SNE）")
 def project_task(
     task_id: str,
     layer: int = Query(default=0, ge=0, description="第几个 Linear 层"),
+    method: str = Query(default="pca", pattern="^(pca|tsne)$"),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     task = _ready_task(task_id, current_user)
     try:
-        return lab.project(task, layer)
+        return lab.project(task, layer, method=method)
     except ValueError as exc:
         raise APIError(
             status.HTTP_400_BAD_REQUEST, "LAB_PROJECTION_FAILED", str(exc)
+        ) from exc
+
+
+@router.get("/{task_id}/attention", summary="逐 epoch 的输入特征注意力")
+def attention_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = _ready_task(task_id, current_user)
+    try:
+        return lab.attention_history(task)
+    except ValueError as exc:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST, "LAB_ATTENTION_FAILED", str(exc)
         ) from exc
