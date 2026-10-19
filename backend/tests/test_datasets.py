@@ -9,21 +9,9 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 
-CSV = (
-    "f1,f2,label\n"
-    "1.0,2.0,0\n"
-    "2.0,4.0,0\n"
-    "3.0,6.0,1\n"
-    "4.0,8.0,1\n"
-).encode("utf-8")
+CSV = b"f1,f2,label\n1.0,2.0,0\n2.0,4.0,0\n3.0,6.0,1\n4.0,8.0,1\n"
 
-CSV_WITH_MISSING = (
-    "f1,f2,label\n"
-    "1.0,2.0,0\n"
-    ",4.0,0\n"
-    "3.0,,1\n"
-    "4.0,8.0,1\n"
-).encode("utf-8")
+CSV_WITH_MISSING = b"f1,f2,label\n1.0,2.0,0\n,4.0,0\n3.0,,1\n4.0,8.0,1\n"
 
 
 @pytest.fixture()
@@ -143,9 +131,7 @@ def test_rejects_empty_file(
 def test_rejects_too_large(
     client: TestClient, auth_headers: dict[str, str], tmp_path, monkeypatch
 ) -> None:
-    settings = Settings(
-        storage_dir=str(tmp_path / "storage"), max_upload_bytes=10
-    )
+    settings = Settings(storage_dir=str(tmp_path / "storage"), max_upload_bytes=10)
     monkeypatch.setattr("app.api.v1.datasets.get_settings", lambda: settings)
 
     resp = _upload(client, auth_headers, b"a,b\n" + b"1,2\n" * 100)
@@ -183,7 +169,7 @@ def test_rejects_target_in_features(
 def test_drop_all_rows_rejected(
     client: TestClient, auth_headers: dict[str, str], storage
 ) -> None:
-    raw = "f1,label\n,0\n,1\n".encode("utf-8")
+    raw = b"f1,label\n,0\n,1\n"
     resp = _upload(client, auth_headers, raw, features=["f1"], strategy="drop")
     assert resp.status_code == 400
     assert "没有剩余样本" in resp.json()["message"]

@@ -48,13 +48,8 @@ def is_llm_enabled() -> bool:
 def _fallback_answer(question: str) -> tuple[str, list[str]]:
     entries = knowledge_base.search(question)
     sections = [f"### {entry.title}\n{entry.content}" for entry in entries]
-    answer = (
-        "当前未配置大模型，以下回答来自内置知识库。\n\n"
-        + "\n\n".join(sections)
-    )
-    sources = [
-        f"{knowledge_base.SOURCE_LABEL} · {entry.title}" for entry in entries
-    ]
+    answer = "当前未配置大模型，以下回答来自内置知识库。\n\n" + "\n\n".join(sections)
+    sources = [f"{knowledge_base.SOURCE_LABEL} · {entry.title}" for entry in entries]
     return answer, sources
 
 
@@ -115,9 +110,7 @@ async def _stream_llm(question: str) -> AsyncIterator[dict]:
     settings = get_settings()
     entries = knowledge_base.search(question, limit=3)
     context = "\n\n".join(f"【{entry.title}】{entry.content}" for entry in entries)
-    sources = [
-        f"{knowledge_base.SOURCE_LABEL} · {entry.title}" for entry in entries
-    ]
+    sources = [f"{knowledge_base.SOURCE_LABEL} · {entry.title}" for entry in entries]
 
     payload = {
         "model": settings.llm_model,
@@ -139,28 +132,28 @@ async def _stream_llm(question: str) -> AsyncIterator[dict]:
     headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
     url = settings.llm_base_url.rstrip("/") + "/chat/completions"
 
-    async with httpx.AsyncClient(
-        timeout=settings.llm_timeout_seconds,
-        trust_env=False,
-        verify=_ssl_verify(),
-    ) as client:
-        async with client.stream(
-            "POST", url, json=payload, headers=headers
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                data = line[6:].strip()
-                if data == "[DONE]":
-                    break
-                try:
-                    parsed = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                choices = parsed.get("choices") or [{}]
-                delta = (choices[0].get("delta") or {}).get("content")
-                if delta:
-                    yield {"type": "delta", "text": sanitize_output(delta)}
+    async with (
+        httpx.AsyncClient(
+            timeout=settings.llm_timeout_seconds,
+            trust_env=False,
+            verify=_ssl_verify(),
+        ) as client,
+        client.stream("POST", url, json=payload, headers=headers) as response,
+    ):
+        response.raise_for_status()
+        async for line in response.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            data = line[6:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                parsed = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            choices = parsed.get("choices") or [{}]
+            delta = (choices[0].get("delta") or {}).get("content")
+            if delta:
+                yield {"type": "delta", "text": sanitize_output(delta)}
 
     yield {"type": "done", "sources": sources}

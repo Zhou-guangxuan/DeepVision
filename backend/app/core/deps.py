@@ -1,10 +1,9 @@
 """FastAPI 依赖：当前用户等。"""
 
+import jwt
 from fastapi import Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
-
-import jwt
 
 from app.api.errors import APIError
 from app.core.security import decode_access_token
@@ -38,13 +37,9 @@ def get_current_user(
 
     subject = payload.get("sub")
     if not subject or not str(subject).isdigit():
-        raise APIError(
-            status.HTTP_401_UNAUTHORIZED, "TOKEN_INVALID", "认证凭证无效"
-        )
+        raise APIError(status.HTTP_401_UNAUTHORIZED, "TOKEN_INVALID", "认证凭证无效")
 
     user = db.get(User, int(subject))
     if user is None:
-        raise APIError(
-            status.HTTP_401_UNAUTHORIZED, "USER_NOT_FOUND", "用户不存在"
-        )
+        raise APIError(status.HTTP_401_UNAUTHORIZED, "USER_NOT_FOUND", "用户不存在")
     return user

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -91,9 +92,7 @@ async def train_websocket(
             asyncio.create_task(send_events()),
             asyncio.create_task(receive_messages()),
         }
-        done, pending = await asyncio.wait(
-            tasks, return_when=asyncio.FIRST_COMPLETED
-        )
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for item in pending:
             item.cancel()
         # 让取消真正生效，避免 "Task was destroyed but it is pending"
@@ -103,7 +102,5 @@ async def train_websocket(
         pass
     finally:
         training.unsubscribe(task, queue)
-        try:
+        with contextlib.suppress(RuntimeError):
             await websocket.close()
-        except RuntimeError:
-            pass

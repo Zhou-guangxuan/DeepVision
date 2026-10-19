@@ -41,9 +41,7 @@ def start_training(
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
 
     task = lab.create_task(user_id=current_user.id, config=config)
-    return LabStartResponse(
-        task_id=task.task_id, parameter_count=parameter_count
-    )
+    return LabStartResponse(task_id=task.task_id, parameter_count=parameter_count)
 
 
 @router.post(

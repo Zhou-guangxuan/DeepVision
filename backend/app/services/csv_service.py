@@ -89,9 +89,7 @@ def apply_missing_strategy(
         if strategy in ("mean", "median"):
             if not pd.api.types.is_numeric_dtype(series):
                 label = "均值" if strategy == "mean" else "中位数"
-                raise CsvParseError(
-                    f"列「{column}」不是数值类型，无法用{label}填充"
-                )
+                raise CsvParseError(f"列「{column}」不是数值类型，无法用{label}填充")
             fill = series.mean() if strategy == "mean" else series.median()
         else:  # mode
             modes = series.mode(dropna=True)
@@ -136,9 +134,7 @@ def compute_stats(
     target_column: str,
 ) -> DatasetStats:
     features = [_column_stats(df, column) for column in feature_columns]
-    target = (
-        _column_stats(df, target_column) if target_column in df.columns else None
-    )
+    target = _column_stats(df, target_column) if target_column in df.columns else None
 
     distribution: dict[str, int] = {}
     if target_column in df.columns:

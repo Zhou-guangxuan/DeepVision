@@ -126,9 +126,7 @@ def list_datasets(
     )
 
 
-@router.get(
-    "/{dataset_id}", response_model=DatasetResponse, summary="数据集详情与统计"
-)
+@router.get("/{dataset_id}", response_model=DatasetResponse, summary="数据集详情与统计")
 def get_dataset(
     dataset_id: int,
     db: Session = Depends(get_db),
@@ -136,9 +134,7 @@ def get_dataset(
 ) -> DatasetResponse:
     dataset = db.get(Dataset, dataset_id)
     if dataset is None:
-        raise APIError(
-            status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在"
-        )
+        raise APIError(status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在")
     if dataset.user_id != current_user.id:
         raise APIError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该数据集")
     return DatasetResponse.model_validate(dataset)

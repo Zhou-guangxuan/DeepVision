@@ -3,7 +3,7 @@
 密码使用 argon2id（argon2-cffi 默认算法），不接受明文入库。
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from argon2 import PasswordHasher
@@ -31,7 +31,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 def create_access_token(subject: str | int) -> tuple[str, int]:
     """签发访问令牌，返回 (token, 有效秒数)。"""
     expires_delta = timedelta(minutes=_settings.access_token_expire_minutes)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(subject),
         "iat": now,

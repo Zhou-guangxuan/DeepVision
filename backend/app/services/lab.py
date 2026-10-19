@@ -30,7 +30,7 @@ BOUNDARY_RANGE = 1.6
 HISTOGRAM_BINS = 20
 BOUNDARY_EVERY = 3
 
-_TASKS: dict[str, "LabTask"] = {}
+_TASKS: dict[str, LabTask] = {}
 _LOCK = threading.Lock()
 
 
@@ -230,7 +230,7 @@ def _decision_boundary(
                 "y": round(float(point[1]), 4),
                 "label": int(label),
             }
-            for point, label in zip(sampled, sampled_labels)
+            for point, label in zip(sampled, sampled_labels, strict=True)
         ],
     }
 
@@ -418,14 +418,9 @@ def inspect(task: LabTask, index: int) -> dict:
     model.eval()
     model.zero_grad(set_to_none=True)
 
-    x = (
-        torch.from_numpy(task.features[index : index + 1])
-        .clone()
-        .requires_grad_(True)
-    )
+    x = torch.from_numpy(task.features[index : index + 1]).clone().requires_grad_(True)
     target = int(task.labels[index])
 
-    captions: list[str] = []
     tensors: list[torch.Tensor] = []
 
     hidden = x
@@ -526,9 +521,7 @@ def project(task: LabTask, layer_index: int, max_points: int = 600) -> dict:
 
     return {
         "layer_index": layer_index,
-        "layer_count": sum(
-            1 for module in model if isinstance(module, nn.Linear)
-        ),
+        "layer_count": sum(1 for module in model if isinstance(module, nn.Linear)),
         "explained": [round(float(value / total), 4) for value in variance[:2]],
         "points": [
             {
@@ -536,6 +529,6 @@ def project(task: LabTask, layer_index: int, max_points: int = 600) -> dict:
                 "y": round(float(point[1]), 4),
                 "label": int(label),
             }
-            for point, label in zip(coords, labels)
+            for point, label in zip(coords, labels, strict=True)
         ],
     }

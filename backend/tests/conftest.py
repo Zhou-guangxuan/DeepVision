@@ -77,9 +77,7 @@ def user_payload() -> dict[str, str]:
 
 
 @pytest.fixture()
-def auth_headers(
-    client: TestClient, user_payload: dict[str, str]
-) -> dict[str, str]:
+def auth_headers(client: TestClient, user_payload: dict[str, str]) -> dict[str, str]:
     client.post("/api/auth/register", json=user_payload)
     resp = client.post("/api/auth/login", json=user_payload)
     assert resp.status_code == 200, resp.text
@@ -96,15 +94,9 @@ def train_env(tmp_path, monkeypatch):
     from app.core.config import Settings
 
     settings = Settings(storage_dir=str(tmp_path / "storage"))
-    monkeypatch.setattr(
-        "app.services.training.SessionLocal", TestingSessionLocal
-    )
+    monkeypatch.setattr("app.services.training.SessionLocal", TestingSessionLocal)
     monkeypatch.setattr("app.services.lab.SessionLocal", TestingSessionLocal)
     monkeypatch.setattr("app.api.realtime.SessionLocal", TestingSessionLocal)
-    monkeypatch.setattr(
-        "app.services.training.get_settings", lambda: settings
-    )
-    monkeypatch.setattr(
-        "app.api.v1.datasets.get_settings", lambda: settings
-    )
+    monkeypatch.setattr("app.services.training.get_settings", lambda: settings)
+    monkeypatch.setattr("app.api.v1.datasets.get_settings", lambda: settings)
     return settings

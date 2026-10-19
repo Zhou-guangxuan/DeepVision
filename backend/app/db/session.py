@@ -11,9 +11,7 @@ _settings = get_settings()
 
 # SQLite 需要放开线程检查（FastAPI 在线程池中执行同步依赖）
 _connect_args = (
-    {"check_same_thread": False}
-    if _settings.database_url.startswith("sqlite")
-    else {}
+    {"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {}
 )
 
 engine = create_engine(

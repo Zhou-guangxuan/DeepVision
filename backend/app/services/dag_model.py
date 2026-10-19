@@ -68,9 +68,7 @@ class DagNet(nn.Module):
                 raise ValueError(f"节点 {node_id} 的单元数必须为正整数")
 
             if node["type"] == "hidden":
-                activation = str(
-                    node.get("params", {}).get("activation", "relu")
-                )
+                activation = str(node.get("params", {}).get("activation", "relu"))
                 activation_cls = ACTIVATIONS.get(activation, nn.ReLU)
                 self.ops[node_id] = nn.Sequential(
                     nn.Linear(in_dim, units),

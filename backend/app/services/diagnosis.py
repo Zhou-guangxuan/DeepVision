@@ -31,14 +31,10 @@ def diagnose(
 
     validation = validate_model_config(config)
     for message in validation["errors"]:
-        issues.append(
-            {"node_id": None, "severity": "error", "message": message}
-        )
+        issues.append({"node_id": None, "severity": "error", "message": message})
         score -= 25
     for message in validation["warnings"]:
-        issues.append(
-            {"node_id": None, "severity": "warning", "message": message}
-        )
+        issues.append({"node_id": None, "severity": "warning", "message": message})
         score -= 8
 
     inputs = [n for n in config.nodes if n.type == "input"]
@@ -96,7 +92,11 @@ def diagnose(
     # 与数据集的输入维度对齐
     if dataset is not None and inputs:
         declared = int(inputs[0].params.get("features", 0) or 0)
-        if declared > 0 and dataset.feature_count > 0 and declared != dataset.feature_count:
+        if (
+            declared > 0
+            and dataset.feature_count > 0
+            and declared != dataset.feature_count
+        ):
             suggestions.append(
                 {
                     "node_id": inputs[0].id,

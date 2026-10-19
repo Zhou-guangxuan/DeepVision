@@ -1,0 +1,23 @@
+[tool.ruff]
+# 目标版本与项目环境保持一致（后端在 3.12 / 3.14 上均验证通过）
+target-version = "py312"
+line-length = 88
+extend-exclude = [".venv", "alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle 错误
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "B",   # bugbear
+  "SIM", # simplify
+]
+ignore = [
+  "E501", # 行长由 formatter 处理
+  "B008", # FastAPI 的 Depends() 作为默认值是惯例
+  "UP046", # 保留 Generic[T] 写法，兼容较旧的 Pydantic
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

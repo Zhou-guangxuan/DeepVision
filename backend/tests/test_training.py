@@ -215,7 +215,11 @@ def test_train_with_merge_topology(
             {"id": "n1", "type": "input", "params": {"features": 2}},
             {"id": "a", "type": "hidden", "params": {"units": 4, "activation": "relu"}},
             {"id": "b", "type": "hidden", "params": {"units": 3, "activation": "tanh"}},
-            {"id": "o", "type": "output", "params": {"units": 2, "task": "classification"}},
+            {
+                "id": "o",
+                "type": "output",
+                "params": {"units": 2, "task": "classification"},
+            },
         ],
         "edges": [
             {"source": "n1", "target": "a"},
@@ -251,9 +255,7 @@ def test_train_with_merge_topology(
 def _csv3(rows: int = 80) -> bytes:
     lines = ["f1,f2,f3,label"]
     for index in range(rows):
-        lines.append(
-            f"{index}.0,{(index * 2) % 10}.0,{(index * 3) % 7}.0,{index % 2}"
-        )
+        lines.append(f"{index}.0,{(index * 2) % 10}.0,{(index * 3) % 7}.0,{index % 2}")
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
@@ -272,9 +274,7 @@ def _upload3(client: TestClient, headers: dict[str, str]):
 
 def _collect(client: TestClient, task_id: str, headers: dict[str, str]) -> list[dict]:
     events: list[dict] = []
-    with client.websocket_connect(
-        f"/ws/train/{task_id}?token={_token(headers)}"
-    ) as ws:
+    with client.websocket_connect(f"/ws/train/{task_id}?token={_token(headers)}") as ws:
         while True:
             event = ws.receive_json()
             events.append(event)

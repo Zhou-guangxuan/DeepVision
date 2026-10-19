@@ -37,9 +37,7 @@ def _build_token_response(user: User) -> TokenResponse:
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> UserResponse:
     exists = db.scalar(select(User).where(User.username == payload.username))
     if exists is not None:
-        raise APIError(
-            status.HTTP_409_CONFLICT, "USERNAME_TAKEN", "用户名已被占用"
-        )
+        raise APIError(status.HTTP_409_CONFLICT, "USERNAME_TAKEN", "用户名已被占用")
 
     user = User(
         username=payload.username,

@@ -1,6 +1,6 @@
 """认证相关测试，对应设计文档阶段一验收标准。"""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi.testclient import TestClient
@@ -44,9 +44,7 @@ def test_duplicate_username_conflicts(
     assert resp.json()["code"] == "USERNAME_TAKEN"
 
 
-def test_login_returns_token(
-    client: TestClient, user_payload: dict[str, str]
-) -> None:
+def test_login_returns_token(client: TestClient, user_payload: dict[str, str]) -> None:
     client.post("/api/auth/register", json=user_payload)
     resp = client.post("/api/auth/login", json=user_payload)
     assert resp.status_code == 200, resp.text
@@ -75,9 +73,7 @@ def test_me_requires_token(client: TestClient) -> None:
     assert resp.json()["code"] == "NOT_AUTHENTICATED"
 
 
-def test_me_with_token(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_me_with_token(client: TestClient, auth_headers: dict[str, str]) -> None:
     resp = client.get("/api/auth/me", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["username"] == "alice"
@@ -99,7 +95,7 @@ def test_expired_token_returns_401(
     user_id = login["user"]["id"]
 
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired = jwt.encode(
         {
             "sub": str(user_id),
@@ -110,9 +106,7 @@ def test_expired_token_returns_401(
         algorithm=settings.algorithm,
     )
 
-    resp = client.get(
-        "/api/auth/me", headers={"Authorization": f"Bearer {expired}"}
-    )
+    resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {expired}"})
     assert resp.status_code == 401
     assert resp.json()["code"] == "TOKEN_EXPIRED"
 

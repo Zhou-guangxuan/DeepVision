@@ -110,8 +110,7 @@ def validate_model_config(payload: ModelConfigIn) -> dict:
     plan = None
     acyclic = False
     if all(
-        edge.source in node_map and edge.target in node_map
-        for edge in payload.edges
+        edge.source in node_map and edge.target in node_map for edge in payload.edges
     ):
         plan = build_execution_plan(payload)
         acyclic = plan is not None

@@ -39,9 +39,7 @@ def list_records(
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
 
     rows = db.scalars(
-        base.order_by(
-            TrainingRecord.created_at.desc(), TrainingRecord.id.desc()
-        )
+        base.order_by(TrainingRecord.created_at.desc(), TrainingRecord.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -68,9 +66,7 @@ def create_record(
     if db.scalar(
         select(TrainingRecord).where(TrainingRecord.task_id == payload.task_id)
     ):
-        raise APIError(
-            status.HTTP_409_CONFLICT, "TASK_ID_TAKEN", "task_id 已存在"
-        )
+        raise APIError(status.HTTP_409_CONFLICT, "TASK_ID_TAKEN", "task_id 已存在")
 
     if payload.dataset_id is not None:
         dataset = db.get(Dataset, payload.dataset_id)
@@ -79,9 +75,7 @@ def create_record(
                 status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在"
             )
         if dataset.user_id != current_user.id:
-            raise APIError(
-                status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该数据集"
-            )
+            raise APIError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该数据集")
 
     record = TrainingRecord(
         user_id=current_user.id,
@@ -99,9 +93,7 @@ def create_record(
     return RecordResponse.model_validate(record)
 
 
-@router.get(
-    "/{record_id}", response_model=RecordResponse, summary="训练记录详情"
-)
+@router.get("/{record_id}", response_model=RecordResponse, summary="训练记录详情")
 def get_record(
     record_id: int,
     db: Session = Depends(get_db),
@@ -109,9 +101,7 @@ def get_record(
 ) -> RecordResponse:
     record = db.get(TrainingRecord, record_id)
     if record is None:
-        raise APIError(
-            status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在"
-        )
+        raise APIError(status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在")
     _ensure_owned(record, current_user)
     return RecordResponse.model_validate(record)
 
@@ -128,9 +118,7 @@ def delete_record(
 ) -> Response:
     record = db.get(TrainingRecord, record_id)
     if record is None:
-        raise APIError(
-            status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在"
-        )
+        raise APIError(status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在")
     _ensure_owned(record, current_user)
     db.delete(record)
     db.commit()

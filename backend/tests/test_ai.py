@@ -145,9 +145,7 @@ def test_diagnose_flags_hidden_width(
     )
     body = resp.json()
 
-    suggestion = next(
-        item for item in body["suggestions"] if item["field"] == "units"
-    )
+    suggestion = next(item for item in body["suggestions"] if item["field"] == "units")
     assert suggestion["node_id"] == "n2"
     assert suggestion["from"] == 4
     assert suggestion["to"] == 20
@@ -219,9 +217,7 @@ def test_diagnose_rejects_other_users_dataset(
     assert resp.status_code == 403
 
 
-@pytest.mark.parametrize(
-    "field", ["features", "units", "activation", "task"]
-)
+@pytest.mark.parametrize("field", ["features", "units", "activation", "task"])
 def test_suggestion_fields_are_whitelisted(
     client: TestClient, auth_headers: dict[str, str], field: str
 ) -> None:

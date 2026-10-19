@@ -57,9 +57,7 @@ async def chat(
     )
 
 
-@router.post(
-    "/diagnose", response_model=DiagnoseResponse, summary="拓扑诊断与调参建议"
-)
+@router.post("/diagnose", response_model=DiagnoseResponse, summary="拓扑诊断与调参建议")
 def diagnose_graph(
     payload: DiagnoseRequest,
     db: Session = Depends(get_db),

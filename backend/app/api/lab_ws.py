@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -89,9 +90,7 @@ async def lab_websocket(
             asyncio.create_task(send_events()),
             asyncio.create_task(receive_messages()),
         }
-        _, pending = await asyncio.wait(
-            tasks, return_when=asyncio.FIRST_COMPLETED
-        )
+        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for item in pending:
             item.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
@@ -100,7 +99,5 @@ async def lab_websocket(
         pass
     finally:
         lab.unsubscribe(task, queue)
-        try:
+        with contextlib.suppress(RuntimeError):
             await websocket.close()
-        except RuntimeError:
-            pass

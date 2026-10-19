@@ -12,7 +12,11 @@ CHAIN = _config(
         {"id": "n1", "type": "input", "params": {"features": 8}},
         {"id": "n2", "type": "hidden", "params": {"units": 128, "activation": "relu"}},
         {"id": "n3", "type": "hidden", "params": {"units": 64, "activation": "relu"}},
-        {"id": "n4", "type": "output", "params": {"units": 2, "task": "classification"}},
+        {
+            "id": "n4",
+            "type": "output",
+            "params": {"units": 2, "task": "classification"},
+        },
     ],
     [
         {"source": "n1", "target": "n2"},
@@ -72,9 +76,7 @@ def test_self_loop_rejected(client: TestClient, auth_headers: dict[str, str]) ->
         ],
         [{"source": "n1", "target": "n1"}, {"source": "n1", "target": "n2"}],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
     assert body["valid"] is False
     assert any("自身" in error for error in body["errors"])
 
@@ -92,9 +94,7 @@ def test_duplicate_edge_rejected(
             {"source": "n1", "target": "n2"},
         ],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
     assert body["valid"] is False
     assert any("重复连线" in error for error in body["errors"])
 
@@ -106,9 +106,7 @@ def test_missing_input_rejected(
         [{"id": "n1", "type": "output", "params": {}}],
         [],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
     assert body["valid"] is False
     assert any("输入层" in error for error in body["errors"])
 
@@ -123,9 +121,7 @@ def test_unknown_node_reference_rejected(
         ],
         [{"source": "n1", "target": "ghost"}],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
     assert body["valid"] is False
     assert any("不存在" in error for error in body["errors"])
 
@@ -150,9 +146,7 @@ def test_branch_is_valid_and_has_plan(
             {"source": "n2", "target": "n4"},
         ],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
     assert body["valid"] is True
     assert body["execution_plan"] is not None
     assert any("不会影响最终结果" in warning for warning in body["warnings"])
@@ -176,9 +170,7 @@ def test_merge_plan_concatenates_inputs(
             {"source": "n3", "target": "n4"},
         ],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
     assert body["valid"] is True, body["errors"]
 
     plan = body["execution_plan"]
@@ -209,9 +201,7 @@ def test_multiple_inputs_and_outputs_allowed(
             {"source": "h1", "target": "o2"},
         ],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
 
     assert body["valid"] is True, body["errors"]
     assert not any("多个输入层" in error for error in body["errors"])
@@ -232,9 +222,7 @@ def test_multiple_outputs_must_share_units(
             {"source": "i1", "target": "o2"},
         ],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
 
     assert body["valid"] is False
     assert any("单元数必须一致" in error for error in body["errors"])
@@ -252,8 +240,6 @@ def test_unreachable_node_rejected(
         ],
         [{"source": "n1", "target": "n2"}],
     )
-    body = client.post(
-        "/api/graph/validate", json=payload, headers=auth_headers
-    ).json()
+    body = client.post("/api/graph/validate", json=payload, headers=auth_headers).json()
     assert body["valid"] is False
     assert any("无法从输入层到达" in error for error in body["errors"])

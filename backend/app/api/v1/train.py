@@ -32,9 +32,7 @@ def create_training(
 ) -> TrainStartResponse:
     dataset = db.get(Dataset, payload.dataset_id)
     if dataset is None:
-        raise APIError(
-            status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在"
-        )
+        raise APIError(status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在")
     if dataset.user_id != current_user.id:
         raise APIError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该数据集")
 
@@ -56,14 +54,10 @@ def create_training(
         hyper=hyper,
     )
 
-    return TrainStartResponse(
-        task_id=task.task_id, total_epochs=int(hyper["epochs"])
-    )
+    return TrainStartResponse(task_id=task.task_id, total_epochs=int(hyper["epochs"]))
 
 
-@router.post(
-    "/{task_id}/stop", response_model=StopResponse, summary="停止训练"
-)
+@router.post("/{task_id}/stop", response_model=StopResponse, summary="停止训练")
 def stop_training(
     task_id: str,
     current_user: User = Depends(get_current_user),

@@ -1,7 +1,5 @@
 """教学实验室接口与实时通道测试。"""
 
-import json
-
 from fastapi.testclient import TestClient
 
 
@@ -125,9 +123,7 @@ def _train(client: TestClient, headers: dict[str, str], epochs: int = 2) -> str:
         headers=headers,
     )
     task_id = started.json()["task_id"]
-    with client.websocket_connect(
-        f"/ws/lab/{task_id}?token={_token(headers)}"
-    ) as ws:
+    with client.websocket_connect(f"/ws/lab/{task_id}?token={_token(headers)}") as ws:
         while True:
             event = ws.receive_json()
             if event["type"] in {"completed", "failed", "stopped"}:
@@ -139,9 +135,7 @@ def test_lab_inspect_attention_and_projection(
 ) -> None:
     task_id = _train(client, auth_headers)
 
-    inspect = client.get(
-        f"/api/lab/{task_id}/inspect?index=0", headers=auth_headers
-    )
+    inspect = client.get(f"/api/lab/{task_id}/inspect?index=0", headers=auth_headers)
     assert inspect.status_code == 200, inspect.text
     body = inspect.json()
     # [2, 6, 6, 2]：两个隐藏层 + 一个输出层

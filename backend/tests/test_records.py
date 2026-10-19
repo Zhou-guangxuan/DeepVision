@@ -8,8 +8,16 @@ SAMPLE_RECORD = {
         "version": 1,
         "nodes": [
             {"id": "n1", "type": "input", "params": {"features": 8}},
-            {"id": "n2", "type": "hidden", "params": {"units": 128, "activation": "relu"}},
-            {"id": "n3", "type": "output", "params": {"units": 2, "task": "classification"}},
+            {
+                "id": "n2",
+                "type": "hidden",
+                "params": {"units": 128, "activation": "relu"},
+            },
+            {
+                "id": "n3",
+                "type": "output",
+                "params": {"units": 2, "task": "classification"},
+            },
         ],
         "edges": [
             {"source": "n1", "target": "n2"},
@@ -17,7 +25,11 @@ SAMPLE_RECORD = {
         ],
     },
     "hyperparameters": {"epochs": 50, "batch_size": 32, "learning_rate": 0.001},
-    "result_metrics": {"final_loss": 0.184, "final_accuracy": 0.943, "duration_sec": 126.4},
+    "result_metrics": {
+        "final_loss": 0.184,
+        "final_accuracy": 0.943,
+        "duration_sec": 126.4,
+    },
     "status": "success",
 }
 
@@ -57,9 +69,7 @@ def test_list_returns_own_records(
     assert len(body["items"]) == 2
 
 
-def test_get_single_record(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_get_single_record(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/records", json=SAMPLE_RECORD, headers=auth_headers
     ).json()
@@ -80,7 +90,9 @@ def test_duplicate_task_id_conflicts(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
     assert (
-        client.post("/api/records", json=SAMPLE_RECORD, headers=auth_headers).status_code
+        client.post(
+            "/api/records", json=SAMPLE_RECORD, headers=auth_headers
+        ).status_code
         == 201
     )
     resp = client.post("/api/records", json=SAMPLE_RECORD, headers=auth_headers)
@@ -124,9 +136,7 @@ def test_other_user_cannot_read_record(client: TestClient) -> None:
     )
 
 
-def test_delete_own_record(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
+def test_delete_own_record(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/records", json=SAMPLE_RECORD, headers=auth_headers
     ).json()
@@ -140,17 +150,11 @@ def test_delete_own_record(
     )
 
 
-def test_pagination_bounds(
-    client: TestClient, auth_headers: dict[str, str]
-) -> None:
-    resp = client.get(
-        "/api/records", params={"page": 0}, headers=auth_headers
-    )
+def test_pagination_bounds(client: TestClient, auth_headers: dict[str, str]) -> None:
+    resp = client.get("/api/records", params={"page": 0}, headers=auth_headers)
     assert resp.status_code == 422
 
-    resp = client.get(
-        "/api/records", params={"page_size": 101}, headers=auth_headers
-    )
+    resp = client.get("/api/records", params={"page_size": 101}, headers=auth_headers)
     assert resp.status_code == 422
 
 

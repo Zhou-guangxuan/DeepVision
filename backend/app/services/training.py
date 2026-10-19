@@ -105,9 +105,7 @@ def start(task: TrainingTask) -> None:
     if task.thread is not None:
         return
     task.status = "running"
-    task.thread = threading.Thread(
-        target=_run_training, args=(task,), daemon=True
-    )
+    task.thread = threading.Thread(target=_run_training, args=(task,), daemon=True)
     task.thread.start()
 
 
@@ -195,9 +193,7 @@ def _collect_layer_stats(
 
         activation = outputs.get(node_id)
         activation_mean = (
-            float(activation.abs().mean().item())
-            if activation is not None
-            else 0.0
+            float(activation.abs().mean().item()) if activation is not None else 0.0
         )
 
         stats.append(
@@ -262,7 +258,8 @@ def _run_training(task: TrainingTask) -> None:
         total_declared = sum(declared_sizes)
         if total_declared != prepared.input_dim:
             detail = "、".join(
-                f"{nid}:{size}" for nid, size in zip(input_ids, declared_sizes)
+                f"{nid}:{size}"
+                for nid, size in zip(input_ids, declared_sizes, strict=True)
             )
             raise RuntimeError(
                 f"输入层特征数之和 {total_declared}（{detail}）与预处理后的实际特征数 "
@@ -271,7 +268,7 @@ def _run_training(task: TrainingTask) -> None:
 
         input_slices: dict[str, tuple[int, int]] = {}
         cursor = 0
-        for nid, size in zip(input_ids, declared_sizes):
+        for nid, size in zip(input_ids, declared_sizes, strict=True):
             input_slices[nid] = (cursor, cursor + size)
             cursor += size
 
@@ -293,9 +290,7 @@ def _run_training(task: TrainingTask) -> None:
                 for nid in output_ids
             }
             if len(shapes) > 1:
-                raise RuntimeError(
-                    "多个输出层的单元数必须一致（训练时按均值合并输出）"
-                )
+                raise RuntimeError("多个输出层的单元数必须一致（训练时按均值合并输出）")
 
         net = build_dag_net(
             task.plan, nodes, prepared.input_dim, input_slices=input_slices
@@ -312,9 +307,7 @@ def _run_training(task: TrainingTask) -> None:
 
         optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
         loss_fn = (
-            nn.CrossEntropyLoss()
-            if task_type == "classification"
-            else nn.MSELoss()
+            nn.CrossEntropyLoss() if task_type == "classification" else nn.MSELoss()
         )
 
         _emit(
@@ -371,17 +364,13 @@ def _run_training(task: TrainingTask) -> None:
                     accuracy = None
 
             last_epoch = epoch
-            layer_stats = _collect_layer_stats(
-                net, x_val[:32], task.plan["order"]
-            )
+            layer_stats = _collect_layer_stats(net, x_val[:32], task.plan["order"])
             task.layer_stats = layer_stats
             metrics = {
                 "train_loss": round(total_loss / max(batches, 1), 6),
                 "val_loss": round(val_loss, 6),
                 "accuracy": None if accuracy is None else round(accuracy, 6),
-                "grad_norm": round(
-                    sum(item["grad_norm"] for item in layer_stats), 6
-                ),
+                "grad_norm": round(sum(item["grad_norm"] for item in layer_stats), 6),
             }
 
             _emit(
