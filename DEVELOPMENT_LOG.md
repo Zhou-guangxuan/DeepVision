@@ -971,3 +971,41 @@ certificate verify failed: self-signed certificate in certificate chain
 
 - 格式化提交与功能提交分开，便于评审时区分「行为变更」与「纯格式调整」。
 - `.gitattributes` 统一 LF，避免 Windows/macOS 协作时整文件 diff。
+
+---
+
+## 2026-10-19 · 补齐第三大阶段三项（t-SNE / 注意力曲线 / 导出图片）
+
+**类型**：功能开发
+**对应提交**：`feat(lab): t-SNE 投影、注意力曲线与弹窗导出图片`
+
+### 后端
+
+| 变更 | 说明 |
+| --- | --- |
+| `_sample_attention()` | 每个 epoch 取验证集前 32 条，按 `\|∂loss/∂x × x\|` 求特征均值，随 `epoch` 事件推送 `attention` |
+| `_pca_coords()` / `_tsne_coords()` | PCA 用 SVD；t-SNE 为**自实现的精确版本**（困惑度二分搜索 + 动量梯度下降），不引入 scikit-learn |
+| `project(..., method=)` | `pca` 最多 600 点并返回解释度；`tsne` 最多 300 点、不返回解释度 |
+| `attention_history()` | 从任务历史中提取逐 epoch 的注意力序列 |
+| 接口 | `GET /api/lab/{task_id}/projection?layer=&method=pca\|tsne`、`GET /api/lab/{task_id}/attention` |
+
+### 前端
+
+| 变更 | 说明 |
+| --- | --- |
+| 观察弹窗 | 新增「注意力曲线」标签页（ECharts 多序列折线），投影页新增 PCA / t-SNE 切换 |
+| 顶栏导航 | 新增「注意力曲线」入口，与其余三项共用同一个弹窗 |
+| 导出图片 | 弹窗头部按钮，`html2canvas` **动态 import**，导出当前标签页为 2 倍分辨率 PNG |
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | **85 passed**（新增注意力序列与 t-SNE 用例） |
+| 前端构建 | 通过；`html2canvas` 独立 chunk 201KB，按需加载 |
+| 实时验证 | 4 个 epoch → 注意力 2 条序列；PCA 600 点 14ms；t-SNE 300 点 228ms |
+
+### 说明
+
+- t-SNE 为教学场景的精确实现，O(n²)，因此限制 300 点；若要更大规模需换 Barnes-Hut 近似。
+- 注意力曲线来自**当次训练会话**的内存历史，刷新页面后需要重新训练才能看到（记录里只保留末 200 个 epoch 的完整事件）。
