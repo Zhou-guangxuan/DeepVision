@@ -33,6 +33,8 @@ const hoverInfo = ref<{ title: string; detail: string } | null>(null)
 const hoverPos = ref({ x: 0, y: 0 })
 const webglFailed = ref(false)
 const fps = ref(0)
+/** 全局亮度（toneMappingExposure），便于按显示器自行调节 */
+const brightness = ref(1)
 
 let renderer: THREE.WebGLRenderer | null = null
 let scene: THREE.Scene | null = null
@@ -103,7 +105,7 @@ function nodeRadius(node: GraphNode): number {
     node.type === 'input'
       ? Number(node.params.features ?? 8)
       : Number(node.params.units ?? 16)
-  return 7 + Math.min(Math.max(raw, 1), 64) * 0.32
+  return 9 + Math.min(Math.max(raw, 1), 64) * 0.45
 }
 
 function glowTexture(): THREE.Texture {
@@ -264,7 +266,8 @@ function frameCamera(positions: Map<string, THREE.Vector3>): void {
   }
 
   const sphere = box.getBoundingSphere(new THREE.Sphere())
-  const distance = sphere.radius * 2.6 + 180
+  // 相机稍微拉近，节点在画面里更饱满
+  const distance = sphere.radius * 2.1 + 140
 
   camera.position.set(0, distance * 0.42, distance)
   camera.lookAt(sphere.center)
@@ -302,9 +305,9 @@ function rebuild(): void {
     const material = new THREE.MeshStandardMaterial({
       color,
       emissive: color,
-      emissiveIntensity: 0.45 + intensity * 0.55,
-      roughness: 0.32,
-      metalness: 0.15,
+      emissiveIntensity: 0.85 + intensity * 0.6,
+      roughness: 0.25,
+      metalness: 0.1,
     })
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(radius, 28, 20),
@@ -320,7 +323,7 @@ function rebuild(): void {
         map: glowTexture(),
         color,
         transparent: true,
-        opacity: 0.18 + intensity * 0.42,
+        opacity: 0.32 + intensity * 0.4,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -331,7 +334,7 @@ function rebuild(): void {
     halos.push({
       sprite: halo,
       phase: Math.random() * Math.PI * 2,
-      base: 0.18 + intensity * 0.42,
+      base: 0.32 + intensity * 0.4,
     })
   }
 
@@ -345,14 +348,14 @@ function rebuild(): void {
     const geometry = new THREE.TubeGeometry(
       curve,
       1,
-      0.7 + intensity * 3,
+      0.9 + intensity * 3,
       8,
       false,
     )
     const material = new THREE.MeshBasicMaterial({
-      color: 0x64748b,
+      color: 0x94a3b8,
       transparent: true,
-      opacity: 0.35 + intensity * 0.55,
+      opacity: 0.5 + intensity * 0.45,
     })
     const mesh = new THREE.Mesh(geometry, material)
     edgeGroup.add(mesh)
@@ -479,7 +482,8 @@ onMounted(() => {
 
   try {
     scene = new THREE.Scene()
-    scene.fog = new THREE.FogExp2(0x0a0e1a, 0.0014)
+    // 雾只用极淡的一层做景深，密度过高会把远处节点压成黑块
+    scene.fog = new THREE.FogExp2(0x0a0e1a, 0.00015)
 
     camera = new THREE.PerspectiveCamera(
       45,
@@ -493,6 +497,8 @@ onMounted(() => {
       alpha: true,
       preserveDrawingBuffer: true,
     })
+    renderer.toneMapping = THREE.LinearToneMapping
+    renderer.toneMappingExposure = brightness.value
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(container.clientWidth, container.clientHeight)
     container.appendChild(renderer.domElement)
@@ -505,10 +511,13 @@ onMounted(() => {
 
     raycaster = new THREE.Raycaster()
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65))
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.4)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.95))
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.6)
     keyLight.position.set(240, 320, 420)
     scene.add(keyLight)
+    const fillLight = new THREE.DirectionalLight(0x7dd3fc, 0.7)
+    fillLight.position.set(-320, -200, 260)
+    scene.add(fillLight)
     const rimLight = new THREE.PointLight(0x22d3ee, 1.6, 2400)
     rimLight.position.set(-320, -220, 260)
     scene.add(rimLight)
@@ -552,10 +561,17 @@ watch(
   () => rebuild(),
   { deep: true },
 )
+
+watch(brightness, (value) => {
+  if (renderer) renderer.toneMappingExposure = value
+})
 </script>
 
 <template>
-  <div class="relative h-full w-full" :style="{ background: 'var(--bg-base)' }">
+  <div
+    class="relative h-full w-full"
+    style="background: radial-gradient(circle at 50% 42%, #0e1729 0%, #070c16 62%, #04070f 100%)"
+  >
     <div
       ref="containerRef"
       class="h-full w-full"
@@ -585,6 +601,24 @@ watch(
       >
         {{ fps }} fps
       </span>
+      <label
+        class="flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] text-secondary"
+        :style="{
+          borderColor: 'var(--border-subtle)',
+          background: 'rgba(17, 24, 39, 0.85)',
+        }"
+        title="整体亮度"
+      >
+        亮度
+        <input
+          v-model.number="brightness"
+          type="range"
+          min="0.6"
+          max="2.5"
+          step="0.1"
+          class="h-1 w-16 cursor-pointer accent-[var(--brand-cyan)]"
+        />
+      </label>
       <button
         type="button"
         class="rounded-md border px-2 py-1 text-[10px] text-secondary transition-colors duration-fast hover:text-primary"
