@@ -756,3 +756,37 @@
 ### 说明
 
 纯文档改动，代码与测试未动。
+
+---
+
+## 2026-10-19 · 完成第二大阶段剩余任务
+
+**类型**：功能开发
+**对应提交**：`feat: 完成第二大阶段剩余任务（坐标映射 / 持久化 / FPS / 导出 / 权重曲线）`
+
+### 完成的路线项
+
+| 项 | 实现 |
+| --- | --- |
+| P2 3D 布局参考 2D 坐标 | `buildPositions()` 优先用节点的 `x / y` 映射世界坐标 `X / -Y`，Z 按层级错开 120；横纵跨度均 ≤ 150 时回退环形布局 |
+| P3 偏好持久化 | `graph.viewMode` ↔ `localStorage('dv_view_mode')`；工作台 `is3D` ↔ `localStorage('dv_view_3d')` |
+| P4 逐层权重范数曲线 | `TrainView` 新增第二个 ECharts 实例，按 `node_id` 维护 `weight_norm` 序列，图例显示「类型 + 单元数」 |
+| P5 导出 3D 图片 | renderer 开启 `preserveDrawingBuffer`，`toDataURL` 下载 PNG |
+| 帧率可见 | 3D 视图右上角每 500ms 统计一次，显示 `xx fps` |
+
+### 未做与理由
+
+- **InstancedMesh（原 P1）**：当前节点规模远小于 100（典型 3–8 个），且需要逐节点 `emissive` 强度，改成实例化会牺牲按指标着色，收益不足，暂缓。
+- **连线避让**：3D 中连线跨不同 Z 层，穿插概率低；保留为已知限制。
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 前端类型检查 + 构建 | 通过（`vue-tsc --noEmit && vite build`） |
+| 后端 | 本批次未改动 |
+| 浏览器验证 | **未能进行**：browser-skill 提示 `no browser is currently connected`，无法打开页面截图 |
+
+### 待办
+
+- 浏览器扩展连接后，补做 3D 渲染与 FPS 的人工确认。
