@@ -32,6 +32,7 @@ const containerRef = ref<HTMLElement | null>(null)
 const hoverInfo = ref<{ title: string; detail: string } | null>(null)
 const hoverPos = ref({ x: 0, y: 0 })
 const webglFailed = ref(false)
+const fps = ref(0)
 
 let renderer: THREE.WebGLRenderer | null = null
 let scene: THREE.Scene | null = null
@@ -40,6 +41,8 @@ let controls: OrbitControls | null = null
 let raycaster: THREE.Raycaster | null = null
 let resizeObserver: ResizeObserver | null = null
 let frameId = 0
+let frameCount = 0
+let fpsWindowStart = performance.now()
 let glowTextureCache: THREE.Texture | null = null
 const clock = new THREE.Clock()
 
@@ -177,6 +180,31 @@ function computeLevels(
 
 function buildPositions(): Map<string, THREE.Vector3> {
   const levels = computeLevels(store.nodes, store.edges)
+  const maxLevel = Math.max(0, ...levels.values())
+  const positions = new Map<string, THREE.Vector3>()
+
+  // 优先沿用 2D 画布的手工坐标，保留用户的布局意图；只有所有节点都挤在一起时才回退到自动布局
+  const xs = store.nodes.map((node) => Number(node.x ?? 0))
+  const ys = store.nodes.map((node) => Number(node.y ?? 0))
+  const spreadX = xs.length > 0 ? Math.max(...xs) - Math.min(...xs) : 0
+  const spreadY = ys.length > 0 ? Math.max(...ys) - Math.min(...ys) : 0
+  const useManualLayout = store.nodes.length > 1 && (spreadX > 150 || spreadY > 150)
+
+  if (useManualLayout) {
+    for (const node of store.nodes) {
+      const level = levels.get(node.id) ?? 0
+      positions.set(
+        node.id,
+        new THREE.Vector3(
+          Number(node.x ?? 0) * 0.9,
+          -Number(node.y ?? 0) * 0.9,
+          (level - maxLevel / 2) * 120,
+        ),
+      )
+    }
+    return positions
+  }
+
   const grouped = new Map<number, GraphNode[]>()
 
   for (const node of store.nodes) {
@@ -185,9 +213,7 @@ function buildPositions(): Map<string, THREE.Vector3> {
     grouped.get(level)?.push(node)
   }
 
-  const maxLevel = Math.max(0, ...grouped.keys())
   const spacing = 150
-  const positions = new Map<string, THREE.Vector3>()
 
   for (const [level, list] of grouped) {
     const z = (level - maxLevel / 2) * spacing
@@ -427,6 +453,24 @@ function animate(): void {
 
   controls?.update()
   renderer.render(scene, camera)
+
+  frameCount += 1
+  const now = performance.now()
+  if (now - fpsWindowStart >= 500) {
+    fps.value = Math.round((frameCount * 1000) / (now - fpsWindowStart))
+    frameCount = 0
+    fpsWindowStart = now
+  }
+}
+
+/** 把当前画面导出为 PNG（需 renderer 开启 preserveDrawingBuffer） */
+function exportImage(): void {
+  if (!renderer || !scene || !camera) return
+  renderer.render(scene, camera)
+  const link = document.createElement('a')
+  link.href = renderer.domElement.toDataURL('image/png')
+  link.download = `deepvision-3d-${Date.now()}.png`
+  link.click()
 }
 
 onMounted(() => {
@@ -444,7 +488,11 @@ onMounted(() => {
       8000,
     )
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+    })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(container.clientWidth, container.clientHeight)
     container.appendChild(renderer.domElement)
@@ -524,6 +572,30 @@ watch(
       }"
     >
       3D 只读视图 · 左键旋转 · 滚轮缩放 · 右键平移
+    </div>
+
+    <div class="absolute right-3 top-3 flex items-center gap-2">
+      <span
+        class="rounded-md border px-2 py-1 font-mono text-[10px] text-secondary"
+        :style="{
+          borderColor: 'var(--border-subtle)',
+          background: 'rgba(17, 24, 39, 0.85)',
+        }"
+        title="实时帧率，用于确认 100 节点内是否达到 30fps"
+      >
+        {{ fps }} fps
+      </span>
+      <button
+        type="button"
+        class="rounded-md border px-2 py-1 text-[10px] text-secondary transition-colors duration-fast hover:text-primary"
+        :style="{
+          borderColor: 'var(--border-subtle)',
+          background: 'rgba(17, 24, 39, 0.85)',
+        }"
+        @click="exportImage"
+      >
+        导出图片
+      </button>
     </div>
 
     <div

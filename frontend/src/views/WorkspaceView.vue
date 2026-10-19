@@ -40,8 +40,25 @@ const router = useRouter()
 
 const canvasRef = ref<{ addNodeAtCenter: (type: NodeType) => void } | null>(null)
 const showTrainingDialog = ref(false)
-/** 中央区在 2D 编辑与 3D 只读视图之间切换 */
-const is3D = ref(false)
+/** 中央区在 2D 编辑与 3D 只读视图之间切换（偏好持久化） */
+const IS3D_KEY = 'dv_view_3d'
+const is3D = ref(readIs3D())
+
+function readIs3D(): boolean {
+  try {
+    return localStorage.getItem(IS3D_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+watch(is3D, (value) => {
+  try {
+    localStorage.setItem(IS3D_KEY, value ? '1' : '0')
+  } catch {
+    // 忽略写入失败
+  }
+})
 const projectName = ref('未命名项目')
 const validating = ref(false)
 

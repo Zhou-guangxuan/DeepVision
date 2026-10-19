@@ -15,6 +15,7 @@ import {
 } from '@/composables/useTrainingSocket'
 import { useGraphStore } from '@/stores/graph'
 import { useToastStore } from '@/stores/toast'
+import { NODE_TYPE_LABEL } from '@/types/graph'
 
 type TrainStatus = 'connecting' | 'running' | 'completed' | 'failed' | 'stopped'
 
@@ -31,8 +32,10 @@ const toast = useToastStore()
 const taskId = String(route.params.taskId ?? '')
 
 const chartRef = ref<HTMLElement | null>(null)
+const layerChartRef = ref<HTMLElement | null>(null)
 const logRef = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
+let layerChart: ECharts | null = null
 
 const status = ref<TrainStatus>('connecting')
 const socketState = ref<TrainingSocketState>('connecting')
@@ -48,6 +51,20 @@ const epochSeries = ref<number[]>([])
 const trainLossSeries = ref<(number | null)[]>([])
 const valLossSeries = ref<(number | null)[]>([])
 const accuracySeries = ref<(number | null)[]>([])
+
+/** 逐层权重范数：node_id → 每个 epoch 的 weight_norm */
+const layerHistory = ref<Record<string, number[]>>({})
+const layerOrder = ref<string[]>([])
+
+const LAYER_COLORS = ['#22d3ee', '#a78bfa', '#34d399', '#f97316', '#f472b6', '#facc15']
+
+function nodeLabel(nodeId: string): string {
+  const node = graph.nodes.find((item) => item.id === nodeId)
+  if (!node) return nodeId
+  const units =
+    node.type === 'input' ? node.params.features : node.params.units
+  return `${NODE_TYPE_LABEL[node.type]} ${units ?? ''}`.trim()
+}
 
 const seenEpochs = new Set<number>()
 let logSeed = 0
@@ -175,6 +192,50 @@ function updateChart(): void {
 
 function resizeChart(): void {
   chart?.resize()
+  layerChart?.resize()
+}
+
+function layerOption(): echarts.EChartsOption {
+  return {
+    backgroundColor: 'transparent',
+    grid: { left: 48, right: 16, top: 26, bottom: 22 },
+    tooltip: { trigger: 'axis' },
+    legend: {
+      textStyle: { color: '#94a3b8', fontSize: 10 },
+      icon: 'roundRect',
+      top: 0,
+      type: 'scroll',
+    },
+    xAxis: {
+      type: 'category',
+      data: epochSeries.value,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: '#334155' } },
+      axisLabel: { color: '#94a3b8', fontSize: 10 },
+    },
+    yAxis: {
+      type: 'value',
+      name: '‖W‖₁',
+      nameTextStyle: { color: '#94a3b8', fontSize: 10 },
+      axisLabel: { color: '#94a3b8', fontSize: 10 },
+      splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)' } },
+    },
+    series: layerOrder.value.map((nodeId, index) => ({
+      name: nodeLabel(nodeId),
+      type: 'line' as const,
+      smooth: true,
+      showSymbol: false,
+      data: layerHistory.value[nodeId] ?? [],
+      itemStyle: { color: LAYER_COLORS[index % LAYER_COLORS.length] },
+      animationDuration: 300,
+    })),
+  }
+}
+
+function updateLayerChart(): void {
+  if (!layerChart) return
+  // 层数变化会改变 series 数量，整体替换避免残留旧序列
+  layerChart.setOption(layerOption(), true)
 }
 
 function onEvent(event: TrainingEvent): void {
@@ -201,6 +262,25 @@ function onEvent(event: TrainingEvent): void {
 
       const accuracyText =
         event.accuracy === null ? '' : ` acc=${format(toNumber(event.accuracy))}`
+
+      const stats = event.layer_stats
+      if (Array.isArray(stats)) {
+        for (const raw of stats) {
+          const item = raw as { node_id?: string; weight_norm?: number }
+          const nodeId = String(item.node_id ?? '')
+          if (!nodeId) continue
+          if (!layerOrder.value.includes(nodeId)) {
+            layerOrder.value = [...layerOrder.value, nodeId]
+          }
+          const values = layerHistory.value[nodeId] ?? []
+          layerHistory.value[nodeId] = [
+            ...values,
+            Number(item.weight_norm ?? 0),
+          ]
+        }
+        updateLayerChart()
+      }
+
       void pushLog(
         `Epoch ${epoch}: train_loss=${format(toNumber(event.train_loss))} val_loss=${format(toNumber(event.val_loss))}${accuracyText}`,
       )
@@ -254,14 +334,20 @@ onMounted(() => {
   if (chartRef.value) {
     chart = echarts.init(chartRef.value)
     chart.setOption(baseOption())
-    window.addEventListener('resize', resizeChart)
   }
+  if (layerChartRef.value) {
+    layerChart = echarts.init(layerChartRef.value)
+    layerChart.setOption(layerOption())
+  }
+  window.addEventListener('resize', resizeChart)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeChart)
   chart?.dispose()
+  layerChart?.dispose()
   chart = null
+  layerChart = null
 })
 </script>
 
@@ -326,6 +412,13 @@ onBeforeUnmount(() => {
           />
         </div>
         <div ref="chartRef" class="min-h-0 flex-1" />
+        <div
+          class="flex shrink-0 items-center justify-between border-t px-4 py-1.5"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <span class="text-[11px] text-muted">逐层权重范数（‖W‖₁ 随 epoch）</span>
+        </div>
+        <div ref="layerChartRef" class="h-[150px] w-full shrink-0" />
       </AppCard>
 
       <!-- 拓扑与结果 -->

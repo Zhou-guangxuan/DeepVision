@@ -16,6 +16,19 @@ import {
 
 const HISTORY_LIMIT = 50
 const DRAFT_KEY = 'dv_graph_draft'
+const VIEW_MODE_KEY = 'dv_view_mode'
+
+function readViewMode(): ViewMode {
+  try {
+    const raw = localStorage.getItem(VIEW_MODE_KEY)
+    if (raw === 'gradient' || raw === 'activation' || raw === 'weight') {
+      return raw
+    }
+  } catch {
+    // 忽略读取失败
+  }
+  return 'weight'
+}
 
 export type ViewMode = 'weight' | 'gradient' | 'activation'
 
@@ -50,12 +63,17 @@ export const useGraphStore = defineStore('graph', () => {
   const savedAt = ref<string | null>(null)
 
   /** 顶栏视图模式：权重 / 梯度 / 激活（对应设计文档第二版模块一） */
-  const viewMode = ref<ViewMode>('weight')
+  const viewMode = ref<ViewMode>(readViewMode())
   const layerStats = ref<Record<string, LayerStat>>({})
   const layerStatsLoaded = ref(false)
 
   function setViewMode(mode: ViewMode): void {
     viewMode.value = mode
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode)
+    } catch {
+      // 隐私模式下 localStorage 可能不可写，忽略即可
+    }
   }
 
   function setLayerStats(stats: LayerStat[]): void {
