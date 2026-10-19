@@ -278,10 +278,7 @@ function onMinimapNavigate(worldX: number, worldY: number): void {
 
 function onKeyDown(event: KeyboardEvent): void {
   const target = event.target as HTMLElement | null
-  if (
-    target &&
-    ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)
-  ) {
+  if (target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) {
     return
   }
 
@@ -386,7 +383,9 @@ defineExpose({ addNodeAtCenter })
           <path
             :d="edge.d"
             fill="none"
-            :stroke="edge.selected ? 'var(--brand-cyan)' : 'var(--border-default)'"
+            :stroke="
+              edge.selected ? 'var(--brand-cyan)' : 'var(--border-default)'
+            "
             :stroke-width="edge.selected ? 2.5 : 1.2 + edge.intensity * 3"
           />
         </g>
@@ -414,7 +413,10 @@ defineExpose({ addNodeAtCenter })
     </div>
 
     <!-- 顶部浮动工具栏 -->
-    <div class="absolute right-3 top-3 flex items-start gap-2" @pointerdown.stop>
+    <div
+      class="absolute right-3 top-3 flex items-start gap-2"
+      @pointerdown.stop
+    >
       <CanvasToolbar
         :scale-percent="viewport.scalePercent.value"
         :can-undo="store.canUndo"
@@ -437,7 +439,9 @@ defineExpose({ addNodeAtCenter })
       v-if="store.nodes.length === 0"
       class="pointer-events-none absolute inset-0 grid place-items-center"
     >
-      <div class="pointer-events-auto flex max-w-sm flex-col items-center gap-4 text-center">
+      <div
+        class="pointer-events-auto flex max-w-sm flex-col items-center gap-4 text-center"
+      >
         <div
           class="grid h-16 w-16 place-items-center rounded-full border"
           :style="{ borderColor: 'var(--border-default)' }"
@@ -461,7 +465,10 @@ defineExpose({ addNodeAtCenter })
     </div>
 
     <!-- 小地图（上移，避让右下角的 AI 助教悬浮按钮） -->
-    <div class="pointer-events-none absolute bottom-[92px] right-3" @pointerdown.stop>
+    <div
+      class="pointer-events-none absolute bottom-[92px] right-3"
+      @pointerdown.stop
+    >
       <CanvasMinimap
         :nodes="store.nodes"
         :tx="viewport.tx.value"

@@ -84,9 +84,7 @@ export async function streamChat(
     buffer = chunks.pop() ?? ''
 
     for (const chunk of chunks) {
-      const line = chunk
-        .split('\n')
-        .find((item) => item.startsWith('data: '))
+      const line = chunk.split('\n').find((item) => item.startsWith('data: '))
       if (!line) continue
       try {
         onEvent(JSON.parse(line.slice(6)) as ChatEvent)

@@ -190,7 +190,8 @@ function buildPositions(): Map<string, THREE.Vector3> {
   const ys = store.nodes.map((node) => Number(node.y ?? 0))
   const spreadX = xs.length > 0 ? Math.max(...xs) - Math.min(...xs) : 0
   const spreadY = ys.length > 0 ? Math.max(...ys) - Math.min(...ys) : 0
-  const useManualLayout = store.nodes.length > 1 && (spreadX > 150 || spreadY > 150)
+  const useManualLayout =
+    store.nodes.length > 1 && (spreadX > 150 || spreadY > 150)
 
   if (useManualLayout) {
     for (const node of store.nodes) {
@@ -242,9 +243,7 @@ function disposeGroup(group: THREE.Group | null): void {
     const mesh = object as THREE.Mesh
     if (mesh.geometry) mesh.geometry.dispose()
     const material = mesh.material as
-      | THREE.Material
-      | THREE.Material[]
-      | undefined
+      THREE.Material | THREE.Material[] | undefined
     if (Array.isArray(material)) {
       material.forEach((item) => item.dispose())
     } else {
@@ -378,10 +377,7 @@ function onPointerMove(event: PointerEvent): void {
   )
 
   raycaster.setFromCamera(ndc, camera)
-  const hits = raycaster.intersectObjects(
-    [...nodeMeshes, ...edgeMeshes],
-    false,
-  )
+  const hits = raycaster.intersectObjects([...nodeMeshes, ...edgeMeshes], false)
 
   if (hits.length === 0) {
     hoverInfo.value = null
@@ -570,7 +566,14 @@ watch(brightness, (value) => {
 <template>
   <div
     class="relative h-full w-full"
-    style="background: radial-gradient(circle at 50% 42%, #0e1729 0%, #070c16 62%, #04070f 100%)"
+    style="
+      background: radial-gradient(
+        circle at 50% 42%,
+        #0e1729 0%,
+        #070c16 62%,
+        #04070f 100%
+      );
+    "
   >
     <div
       ref="containerRef"

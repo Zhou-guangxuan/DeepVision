@@ -56,13 +56,19 @@ const accuracySeries = ref<(number | null)[]>([])
 const layerHistory = ref<Record<string, number[]>>({})
 const layerOrder = ref<string[]>([])
 
-const LAYER_COLORS = ['#22d3ee', '#a78bfa', '#34d399', '#f97316', '#f472b6', '#facc15']
+const LAYER_COLORS = [
+  '#22d3ee',
+  '#a78bfa',
+  '#34d399',
+  '#f97316',
+  '#f472b6',
+  '#facc15',
+]
 
 function nodeLabel(nodeId: string): string {
   const node = graph.nodes.find((item) => item.id === nodeId)
   if (!node) return nodeId
-  const units =
-    node.type === 'input' ? node.params.features : node.params.units
+  const units = node.type === 'input' ? node.params.features : node.params.units
   return `${NODE_TYPE_LABEL[node.type]} ${units ?? ''}`.trim()
 }
 
@@ -71,7 +77,10 @@ let logSeed = 0
 
 const progress = computed(() => {
   if (totalEpochs.value === 0) return 0
-  return Math.min(100, Math.round((currentEpoch.value / totalEpochs.value) * 100))
+  return Math.min(
+    100,
+    Math.round((currentEpoch.value / totalEpochs.value) * 100),
+  )
 })
 
 const statusText: Record<TrainStatus, string> = {
@@ -261,7 +270,9 @@ function onEvent(event: TrainingEvent): void {
       updateChart()
 
       const accuracyText =
-        event.accuracy === null ? '' : ` acc=${format(toNumber(event.accuracy))}`
+        event.accuracy === null
+          ? ''
+          : ` acc=${format(toNumber(event.accuracy))}`
 
       const stats = event.layer_stats
       if (Array.isArray(stats)) {
@@ -392,7 +403,9 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-3">
+    <div
+      class="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-3"
+    >
       <!-- 指标曲线 -->
       <AppCard class="flex min-h-0 flex-col lg:col-span-2" padding="none">
         <div
@@ -416,7 +429,9 @@ onBeforeUnmount(() => {
           class="flex shrink-0 items-center justify-between border-t px-4 py-1.5"
           :style="{ borderColor: 'var(--border-subtle)' }"
         >
-          <span class="text-[11px] text-muted">逐层权重范数（‖W‖₁ 随 epoch）</span>
+          <span class="text-[11px] text-muted"
+            >逐层权重范数（‖W‖₁ 随 epoch）</span
+          >
         </div>
         <div ref="layerChartRef" class="h-[150px] w-full shrink-0" />
       </AppCard>
@@ -448,10 +463,15 @@ onBeforeUnmount(() => {
             </div>
             <div class="flex justify-between">
               <dt class="text-muted">最终准确率</dt>
-              <dd class="font-mono text-primary">{{ format(finalAccuracy) }}</dd>
+              <dd class="font-mono text-primary">
+                {{ format(finalAccuracy) }}
+              </dd>
             </div>
           </dl>
-          <p v-if="failureReason" class="mt-3 text-xs leading-relaxed text-danger">
+          <p
+            v-if="failureReason"
+            class="mt-3 text-xs leading-relaxed text-danger"
+          >
             {{ failureReason }}
           </p>
         </AppCard>

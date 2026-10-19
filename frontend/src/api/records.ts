@@ -18,11 +18,7 @@ export interface ModelConfig {
 }
 
 export type RecordStatus =
-  | 'pending'
-  | 'running'
-  | 'success'
-  | 'failed'
-  | 'interrupted'
+  'pending' | 'running' | 'success' | 'failed' | 'interrupted'
 
 export interface TrainingRecord {
   id: number

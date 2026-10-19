@@ -231,7 +231,10 @@ onMounted(() => {
 
   drawBoundary()
 
-  if (typeof ResizeObserver !== 'undefined' && boundaryRef.value?.parentElement) {
+  if (
+    typeof ResizeObserver !== 'undefined' &&
+    boundaryRef.value?.parentElement
+  ) {
     canvasObserver = new ResizeObserver(() => resizeBoundary())
     canvasObserver.observe(boundaryRef.value.parentElement)
   }
@@ -298,7 +301,9 @@ watch(() => props.boundary, drawBoundary, { deep: true })
         }"
       >
         <canvas ref="boundaryRef" class="h-full w-full" />
-        <p class="pointer-events-none absolute right-3 top-2 text-[10px] text-muted">
+        <p
+          class="pointer-events-none absolute right-3 top-2 text-[10px] text-muted"
+        >
           决策边界 + 数据分布
         </p>
       </div>

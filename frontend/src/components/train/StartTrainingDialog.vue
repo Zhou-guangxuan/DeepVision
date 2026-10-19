@@ -159,12 +159,9 @@ async function onSubmit(): Promise<void> {
               <option v-if="datasets.length === 0" :value="null" disabled>
                 暂无数据集，请先到「数据集」页上传
               </option>
-              <option
-                v-for="item in datasets"
-                :key="item.id"
-                :value="item.id"
-              >
-                {{ item.name }}（{{ item.sample_count }} 行 · {{ item.feature_count }} 个特征列）
+              <option v-for="item in datasets" :key="item.id" :value="item.id">
+                {{ item.name }}（{{ item.sample_count }} 行 ·
+                {{ item.feature_count }} 个特征列）
               </option>
             </select>
             <p class="mt-1.5 text-[11px] leading-relaxed text-muted">
@@ -174,7 +171,10 @@ async function onSubmit(): Promise<void> {
 
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="mb-1.5 block text-xs text-secondary" for="hp-epochs">
+              <label
+                class="mb-1.5 block text-xs text-secondary"
+                for="hp-epochs"
+              >
                 Epochs
               </label>
               <input

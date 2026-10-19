@@ -20,11 +20,7 @@
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family:
-      Inter,
-      'Noto Sans SC',
-      'PingFang SC',
-      'Microsoft YaHei',
-      'Segoe UI',
+      Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Segoe UI',
       sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;

@@ -3,10 +3,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import { TOKEN_KEY } from '@/api/client'
 
 export type TrainingSocketState =
-  | 'connecting'
-  | 'open'
-  | 'reconnecting'
-  | 'closed'
+  'connecting' | 'open' | 'reconnecting' | 'closed'
 
 export interface TrainingEvent {
   type: 'started' | 'epoch' | 'completed' | 'failed' | 'stopped' | 'pong'

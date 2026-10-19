@@ -53,9 +53,7 @@ function disposeGroup(group: THREE.Group | null): void {
     const mesh = object as THREE.Mesh
     mesh.geometry?.dispose()
     const material = mesh.material as
-      | THREE.Material
-      | THREE.Material[]
-      | undefined
+      THREE.Material | THREE.Material[] | undefined
     if (Array.isArray(material)) material.forEach((item) => item.dispose())
     else material?.dispose()
   })
@@ -97,7 +95,10 @@ function rebuild(): void {
     })
 
     const highlight = props.highlight ?? []
-    const maxHighlight = Math.max(...highlight.map((value) => Math.abs(value)), 1e-9)
+    const maxHighlight = Math.max(
+      ...highlight.map((value) => Math.abs(value)),
+      1e-9,
+    )
 
     nodes.forEach((node, nodeIndex) => {
       const mesh = new THREE.Mesh(geometry.clone(), material.clone())
@@ -113,9 +114,7 @@ function rebuild(): void {
       contentGroup?.add(mesh)
     })
 
-    labelAnchors.push(
-      new THREE.Vector3(x, (maxSpread / 2) * SPACING_Y + 46, 0),
-    )
+    labelAnchors.push(new THREE.Vector3(x, (maxSpread / 2) * SPACING_Y + 46, 0))
   })
 
   // 相邻层全连接
@@ -152,7 +151,11 @@ function rebuild(): void {
 
 function resetView(): void {
   if (!camera || !controls) return
-  camera.position.set(0, 70, SPACING_X * Math.max(props.layers.length, 2) * 1.05)
+  camera.position.set(
+    0,
+    70,
+    SPACING_X * Math.max(props.layers.length, 2) * 1.05,
+  )
   camera.lookAt(0, 0, 0)
   controls.target.set(0, 0, 0)
   controls.update()

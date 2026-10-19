@@ -43,7 +43,13 @@ function onDragStart(event: DragEvent, type: NodeType): void {
 </script>
 
 <template>
-  <aside class="flex h-full w-60 shrink-0 flex-col border-r" :style="{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }">
+  <aside
+    class="flex h-full w-60 shrink-0 flex-col border-r"
+    :style="{
+      borderColor: 'var(--border-subtle)',
+      background: 'var(--bg-surface)',
+    }"
+  >
     <div class="px-4 pb-3 pt-4">
       <h2 class="text-sm font-semibold text-primary">节点库</h2>
       <p class="mt-1 text-xs leading-relaxed text-muted">
@@ -58,7 +64,10 @@ function onDragStart(event: DragEvent, type: NodeType): void {
         type="button"
         draggable="true"
         class="w-full cursor-grab rounded-md border p-3 text-left transition-colors duration-fast"
-        :style="{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }"
+        :style="{
+          borderColor: 'var(--border-subtle)',
+          background: 'var(--bg-elevated)',
+        }"
         @dragstart="onDragStart($event, item.type)"
         @click="emit('add', item.type)"
       >
@@ -80,7 +89,10 @@ function onDragStart(event: DragEvent, type: NodeType): void {
       </button>
     </div>
 
-    <div class="border-t px-4 py-3" :style="{ borderColor: 'var(--border-subtle)' }">
+    <div
+      class="border-t px-4 py-3"
+      :style="{ borderColor: 'var(--border-subtle)' }"
+    >
       <p class="text-[11px] leading-relaxed text-muted">
         支持分支与汇合：多个前驱的节点会按
         <b class="font-medium text-secondary">特征维 concat</b> 合并。

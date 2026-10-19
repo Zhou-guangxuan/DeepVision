@@ -33,7 +33,9 @@ const inputId = computed(
   () => props.id ?? `dv-input-${Math.random().toString(36).slice(2, 9)}`,
 )
 // 聚焦或有内容时，标签上浮
-const floating = computed(() => focused.value || (props.modelValue ?? '').length > 0)
+const floating = computed(
+  () => focused.value || (props.modelValue ?? '').length > 0,
+)
 
 function onInput(event: Event): void {
   emit('update:modelValue', (event.target as HTMLInputElement).value)

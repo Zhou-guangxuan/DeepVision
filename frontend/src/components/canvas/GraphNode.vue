@@ -63,7 +63,9 @@ const showOutputPort = computed(() => props.node.type !== 'output')
 
     <div class="flex items-center gap-1.5">
       <span class="h-1.5 w-1.5 rounded-full" :style="{ background: accent }" />
-      <span class="text-xs text-secondary">{{ NODE_TYPE_LABEL[node.type] }}</span>
+      <span class="text-xs text-secondary">{{
+        NODE_TYPE_LABEL[node.type]
+      }}</span>
     </div>
 
     <p class="mt-2 truncate font-mono text-sm text-primary">{{ summary }}</p>

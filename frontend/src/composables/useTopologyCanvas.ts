@@ -96,7 +96,9 @@ export function useTopologyCanvas(
 
     for (const node of nodes) {
       // 呼吸效果：半径随时间轻微起伏
-      const breath = reduceMotion ? 1 : 0.85 + Math.sin(time / 900 + node.phase) * 0.15
+      const breath = reduceMotion
+        ? 1
+        : 0.85 + Math.sin(time / 900 + node.phase) * 0.15
       ctx.beginPath()
       ctx.fillStyle = 'rgba(34, 211, 238, 0.85)'
       ctx.shadowColor = 'rgba(34, 211, 238, 0.75)'

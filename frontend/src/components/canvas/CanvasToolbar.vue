@@ -59,7 +59,10 @@ const buttonClass =
       ↷
     </button>
 
-    <span class="mx-1 h-5 w-px" :style="{ background: 'var(--border-subtle)' }" />
+    <span
+      class="mx-1 h-5 w-px"
+      :style="{ background: 'var(--border-subtle)' }"
+    />
 
     <button
       type="button"
@@ -86,7 +89,10 @@ const buttonClass =
       +
     </button>
 
-    <span class="mx-1 h-5 w-px" :style="{ background: 'var(--border-subtle)' }" />
+    <span
+      class="mx-1 h-5 w-px"
+      :style="{ background: 'var(--border-subtle)' }"
+    />
 
     <button
       type="button"

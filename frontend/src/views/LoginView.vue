@@ -13,7 +13,13 @@ import { useToastStore } from '@/stores/toast'
 const REMEMBER_KEY = 'dv_remembered_username'
 const USERNAME_RE = /^[A-Za-z0-9_-]{3,64}$/
 const STRENGTH_LABELS = ['', '弱', '一般', '较强', '强']
-const STRENGTH_COLORS = ['', 'bg-danger', 'bg-warning', 'bg-brand-cyan', 'bg-success']
+const STRENGTH_COLORS = [
+  '',
+  'bg-danger',
+  'bg-warning',
+  'bg-brand-cyan',
+  'bg-success',
+]
 
 const route = useRoute()
 const router = useRouter()
@@ -144,7 +150,8 @@ async function onSubmit(): Promise<void> {
     }
 
     const redirect =
-      typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+      typeof route.query.redirect === 'string' &&
+      route.query.redirect.startsWith('/')
         ? route.query.redirect
         : '/workspace'
     await router.replace(redirect)
@@ -167,7 +174,9 @@ function onForgot(): void {
 <template>
   <div class="flex min-h-screen w-full overflow-hidden bg-base">
     <!-- 品牌区：宽屏显示 -->
-    <section class="relative hidden w-3/5 flex-col justify-between p-12 lg:flex">
+    <section
+      class="relative hidden w-3/5 flex-col justify-between p-12 lg:flex"
+    >
       <div class="pointer-events-none absolute inset-0">
         <div
           class="absolute -left-32 -top-32 h-[440px] w-[440px] rounded-full blur-[130px]"
@@ -201,8 +210,9 @@ function onForgot(): void {
           从代码里搬到画布上
         </h1>
         <p class="mt-4 text-base leading-relaxed text-secondary">
-          拖拽搭建神经网络结构，上传 CSV 数据，实时观察训练过程中损失与准确率的变化，并由
-          AI 助教给出结构与超参建议。
+          拖拽搭建神经网络结构，上传 CSV
+          数据，实时观察训练过程中损失与准确率的变化，并由 AI
+          助教给出结构与超参建议。
         </p>
         <ul class="mt-8 space-y-3">
           <li
@@ -240,9 +250,7 @@ function onForgot(): void {
           </h2>
           <p class="mt-1.5 text-sm text-secondary">
             {{
-              isRegister
-                ? '注册后即可搭建第一个网络'
-                : '使用你的账号进入工作台'
+              isRegister ? '注册后即可搭建第一个网络' : '使用你的账号进入工作台'
             }}
           </p>
 
@@ -279,9 +287,7 @@ function onForgot(): void {
                     v-for="segment in 4"
                     :key="segment"
                     class="h-1 flex-1 rounded-full transition-colors duration-base"
-                    :class="
-                      segment <= strength ? strengthColor : 'bg-hover'
-                    "
+                    :class="segment <= strength ? strengthColor : 'bg-hover'"
                   />
                 </div>
                 <p class="mt-1.5 text-xs text-muted">
@@ -296,7 +302,9 @@ function onForgot(): void {
               v-if="!isRegister"
               class="flex items-center justify-between text-sm"
             >
-              <label class="flex cursor-pointer items-center gap-2 text-secondary">
+              <label
+                class="flex cursor-pointer items-center gap-2 text-secondary"
+              >
                 <input
                   v-model="remember"
                   type="checkbox"

@@ -96,8 +96,7 @@ async function loadProjection(): Promise<void> {
     await nextTick()
     drawProjection()
   } catch (error) {
-    errorMessage.value =
-      error instanceof Error ? error.message : '降维投影失败'
+    errorMessage.value = error instanceof Error ? error.message : '降维投影失败'
   } finally {
     loading.value = false
   }
@@ -120,8 +119,7 @@ function drawProjection(): void {
   if (!data) return
 
   const pad = 16
-  const toX = (value: number) =>
-    pad + ((value + 1) / 2) * (width - pad * 2)
+  const toX = (value: number) => pad + ((value + 1) / 2) * (width - pad * 2)
   const toY = (value: number) =>
     height - pad - ((value + 1) / 2) * (height - pad * 2)
 
@@ -204,7 +202,9 @@ onBeforeUnmount(() => {
             type="button"
             class="rounded-sm px-2.5 py-1 text-xs transition-colors duration-fast"
             :class="
-              tab === item.key ? 'text-primary' : 'text-muted hover:text-secondary'
+              tab === item.key
+                ? 'text-primary'
+                : 'text-muted hover:text-secondary'
             "
             :style="
               tab === item.key ? { background: 'var(--bg-elevated)' } : {}
@@ -214,7 +214,9 @@ onBeforeUnmount(() => {
             {{ item.label }}
           </button>
         </div>
-        <AppButton variant="ghost" size="sm" @click="emit('close')">关闭</AppButton>
+        <AppButton variant="ghost" size="sm" @click="emit('close')"
+          >关闭</AppButton
+        >
       </header>
 
       <div class="min-h-0 flex-1 overflow-y-auto p-4">
@@ -239,8 +241,9 @@ onBeforeUnmount(() => {
             </AppButton>
             <template v-if="inspect">
               <span class="text-[11px] text-muted">
-                共 {{ inspect.total_samples }} 条 · 真实 {{ inspect.true_label }} ·
-                预测 {{ inspect.prediction }} · loss {{ inspect.loss.toFixed(4) }}
+                共 {{ inspect.total_samples }} 条 · 真实
+                {{ inspect.true_label }} · 预测 {{ inspect.prediction }} · loss
+                {{ inspect.loss.toFixed(4) }}
               </span>
             </template>
           </div>
@@ -266,7 +269,9 @@ onBeforeUnmount(() => {
                   :key="index"
                   class="rounded-sm px-2 py-1 font-mono text-[11px]"
                   :style="{ background: 'var(--bg-elevated)' }"
-                  :class="index === inspect.prediction ? 'text-primary' : 'text-muted'"
+                  :class="
+                    index === inspect.prediction ? 'text-primary' : 'text-muted'
+                  "
                 >
                   p{{ index }} = {{ value }}
                 </span>
@@ -288,7 +293,8 @@ onBeforeUnmount(() => {
 
             <div v-if="currentLayer">
               <p class="mb-1 text-[11px] text-secondary">
-                第 {{ currentLayer.index + 1 }} 层（{{ currentLayer.size }} 个单元）
+                第 {{ currentLayer.index + 1 }} 层（{{ currentLayer.size }}
+                个单元）
               </p>
               <div class="space-y-1">
                 <div
@@ -296,11 +302,15 @@ onBeforeUnmount(() => {
                   :key="`a-${index}`"
                   class="flex items-center gap-2"
                 >
-                  <span class="w-8 shrink-0 text-right font-mono text-[10px] text-muted">
+                  <span
+                    class="w-8 shrink-0 text-right font-mono text-[10px] text-muted"
+                  >
                     {{ index }}
                   </span>
-                  <div class="h-2 flex-1 overflow-hidden rounded-sm"
-                       :style="{ background: 'var(--bg-elevated)' }">
+                  <div
+                    class="h-2 flex-1 overflow-hidden rounded-sm"
+                    :style="{ background: 'var(--bg-elevated)' }"
+                  >
                     <div
                       class="h-2"
                       :style="{
@@ -309,7 +319,9 @@ onBeforeUnmount(() => {
                       }"
                     />
                   </div>
-                  <span class="w-14 shrink-0 font-mono text-[10px] text-secondary">
+                  <span
+                    class="w-14 shrink-0 font-mono text-[10px] text-secondary"
+                  >
                     {{ value.toFixed(3) }}
                   </span>
                 </div>
@@ -323,11 +335,15 @@ onBeforeUnmount(() => {
                     :key="`g-${index}`"
                     class="flex items-center gap-2"
                   >
-                    <span class="w-8 shrink-0 text-right font-mono text-[10px] text-muted">
+                    <span
+                      class="w-8 shrink-0 text-right font-mono text-[10px] text-muted"
+                    >
                       {{ index }}
                     </span>
-                    <div class="h-2 flex-1 overflow-hidden rounded-sm"
-                         :style="{ background: 'var(--bg-elevated)' }">
+                    <div
+                      class="h-2 flex-1 overflow-hidden rounded-sm"
+                      :style="{ background: 'var(--bg-elevated)' }"
+                    >
                       <div
                         class="h-2"
                         :style="{
@@ -336,7 +352,9 @@ onBeforeUnmount(() => {
                         }"
                       />
                     </div>
-                    <span class="w-14 shrink-0 font-mono text-[10px] text-secondary">
+                    <span
+                      class="w-14 shrink-0 font-mono text-[10px] text-secondary"
+                    >
                       {{ value.toFixed(3) }}
                     </span>
                   </div>
@@ -369,7 +387,8 @@ onBeforeUnmount(() => {
 
           <div v-if="inspect" class="mt-4">
             <p class="mb-2 text-[11px] text-muted">
-              注意力 = |∂loss/∂x × x|，数值越大表示该输入特征对本次预测影响越大。
+              注意力 = |∂loss/∂x ×
+              x|，数值越大表示该输入特征对本次预测影响越大。
             </p>
             <div class="space-y-1.5">
               <div
@@ -377,11 +396,15 @@ onBeforeUnmount(() => {
                 :key="index"
                 class="flex items-center gap-2"
               >
-                <span class="w-10 shrink-0 text-right font-mono text-[10px] text-muted">
+                <span
+                  class="w-10 shrink-0 text-right font-mono text-[10px] text-muted"
+                >
                   f{{ index }}
                 </span>
-                <div class="h-2.5 flex-1 overflow-hidden rounded-sm"
-                     :style="{ background: 'var(--bg-elevated)' }">
+                <div
+                  class="h-2.5 flex-1 overflow-hidden rounded-sm"
+                  :style="{ background: 'var(--bg-elevated)' }"
+                >
                   <div
                     class="h-2.5"
                     :style="{
@@ -390,7 +413,9 @@ onBeforeUnmount(() => {
                     }"
                   />
                 </div>
-                <span class="w-16 shrink-0 font-mono text-[10px] text-secondary">
+                <span
+                  class="w-16 shrink-0 font-mono text-[10px] text-secondary"
+                >
                   {{ value.toFixed(4) }}
                 </span>
               </div>

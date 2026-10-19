@@ -29,12 +29,7 @@ import {
 import { useToastStore } from '@/stores/toast'
 
 type LabStatus =
-  | 'idle'
-  | 'running'
-  | 'paused'
-  | 'completed'
-  | 'stopped'
-  | 'failed'
+  'idle' | 'running' | 'paused' | 'completed' | 'stopped' | 'failed'
 
 const STATUS_TEXT: Record<LabStatus, string> = {
   idle: 'idle',
@@ -45,7 +40,10 @@ const STATUS_TEXT: Record<LabStatus, string> = {
   failed: 'failed',
 }
 
-const NAV_ITEMS: { label: string; tab: 'propagation' | 'attention' | 'projection' }[] = [
+const NAV_ITEMS: {
+  label: string
+  tab: 'propagation' | 'attention' | 'projection'
+}[] = [
   { label: '前向/反向传播', tab: 'propagation' },
   { label: '注意力 3D', tab: 'attention' },
   { label: '降维投影', tab: 'projection' },
@@ -84,7 +82,9 @@ const answerMode = ref<'llm' | 'fallback' | ''>('')
 const answerNote = ref('')
 const engine = ref<'auto' | 'llm' | 'offline'>('auto')
 const inspectorOpen = ref(false)
-const inspectorTab = ref<'propagation' | 'attention' | 'projection'>('propagation')
+const inspectorTab = ref<'propagation' | 'attention' | 'projection'>(
+  'propagation',
+)
 /** 输入特征注意力，用于在 3D 中高亮输入层 */
 const saliency = ref<number[]>([])
 
@@ -372,16 +372,28 @@ function diagnoseTraining(): void {
           </div>
 
           <div class="flex gap-2">
-            <AppButton variant="secondary" size="sm" class="flex-1" @click="addLayer">
+            <AppButton
+              variant="secondary"
+              size="sm"
+              class="flex-1"
+              @click="addLayer"
+            >
               + 隐藏层
             </AppButton>
-            <AppButton variant="secondary" size="sm" class="flex-1" @click="removeLayer">
+            <AppButton
+              variant="secondary"
+              size="sm"
+              class="flex-1"
+              @click="removeLayer"
+            >
               − 隐藏层
             </AppButton>
           </div>
 
           <div>
-            <label class="mb-1 block text-[11px] text-secondary">激活函数</label>
+            <label class="mb-1 block text-[11px] text-secondary"
+              >激活函数</label
+            >
             <select v-model="activation" class="dv-select h-9 text-xs">
               <option value="relu">ReLU</option>
               <option value="tanh">Tanh</option>
@@ -398,13 +410,18 @@ function diagnoseTraining(): void {
             </select>
           </div>
 
-          <p class="rounded-md px-2 py-1.5 text-center font-mono text-[11px] text-secondary"
-             :style="{ background: 'var(--bg-elevated)' }">
+          <p
+            class="rounded-md px-2 py-1.5 text-center font-mono text-[11px] text-secondary"
+            :style="{ background: 'var(--bg-elevated)' }"
+          >
             {{ structureText }}
           </p>
         </section>
 
-        <div class="my-3 h-px" :style="{ background: 'var(--border-subtle)' }" />
+        <div
+          class="my-3 h-px"
+          :style="{ background: 'var(--border-subtle)' }"
+        />
 
         <section class="space-y-2.5">
           <p class="text-[11px] font-medium text-secondary">训练超参</p>
@@ -420,7 +437,9 @@ function diagnoseTraining(): void {
           <div>
             <div class="flex justify-between text-[11px] text-secondary">
               <span>学习率</span>
-              <span class="font-mono text-primary">{{ learningRate.toFixed(3) }}</span>
+              <span class="font-mono text-primary">{{
+                learningRate.toFixed(3)
+              }}</span>
             </div>
             <input
               v-model.number="learningRate"
@@ -480,7 +499,9 @@ function diagnoseTraining(): void {
           <div>
             <div class="flex justify-between text-[11px] text-secondary">
               <span>Dropout</span>
-              <span class="font-mono text-primary">{{ dropout.toFixed(2) }}</span>
+              <span class="font-mono text-primary">{{
+                dropout.toFixed(2)
+              }}</span>
             </div>
             <input
               v-model.number="dropout"
@@ -493,10 +514,15 @@ function diagnoseTraining(): void {
           </div>
         </section>
 
-        <div class="my-3 h-px" :style="{ background: 'var(--border-subtle)' }" />
+        <div
+          class="my-3 h-px"
+          :style="{ background: 'var(--border-subtle)' }"
+        />
 
         <section class="space-y-2">
-          <AppButton block size="sm" @click="rebuild">构建 / 重建模型</AppButton>
+          <AppButton block size="sm" @click="rebuild"
+            >构建 / 重建模型</AppButton
+          >
           <div class="flex gap-2">
             <AppButton
               class="flex-1"
@@ -540,7 +566,8 @@ function diagnoseTraining(): void {
             重置视角
           </AppButton>
           <p class="text-[10px] leading-relaxed text-muted">
-            绿灯表示模型已就绪，可直接「开始训练」；训练数据为内置双螺旋（1400 / 600）。
+            绿灯表示模型已就绪，可直接「开始训练」；训练数据为内置双螺旋（1400 /
+            600）。
           </p>
         </section>
       </aside>
@@ -591,7 +618,9 @@ function diagnoseTraining(): void {
 
         <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           <div>
-            <label class="mb-1 block text-[11px] text-secondary">模型引擎</label>
+            <label class="mb-1 block text-[11px] text-secondary"
+              >模型引擎</label
+            >
             <select v-model="engine" class="dv-select h-9 text-xs">
               <option value="auto">自动（有 Key 走大模型）</option>
               <option value="llm">强制大模型</option>
@@ -659,16 +688,26 @@ function diagnoseTraining(): void {
               v-html="renderedAnswer"
             />
             <span v-if="asking" class="text-[11px] text-secondary">▌</span>
-            <div v-if="sources.length > 0" class="mt-2 border-t pt-1.5"
-                 :style="{ borderColor: 'var(--border-subtle)' }">
+            <div
+              v-if="sources.length > 0"
+              class="mt-2 border-t pt-1.5"
+              :style="{ borderColor: 'var(--border-subtle)' }"
+            >
               <p class="text-[10px] text-muted">参考来源</p>
-              <p v-for="source in sources" :key="source" class="text-[10px] text-muted">
+              <p
+                v-for="source in sources"
+                :key="source"
+                class="text-[10px] text-muted"
+              >
                 · {{ source }}
               </p>
             </div>
           </div>
 
-          <div class="rounded-md border p-2" :style="{ borderColor: 'var(--border-subtle)' }">
+          <div
+            class="rounded-md border p-2"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
             <p class="text-[11px] font-medium text-secondary">实时指标</p>
             <dl class="mt-1.5 space-y-1 text-[11px]">
               <div class="flex justify-between">
@@ -685,7 +724,9 @@ function diagnoseTraining(): void {
               </div>
               <div class="flex justify-between">
                 <dt class="text-muted">参数量</dt>
-                <dd class="font-mono text-secondary">{{ displayParamCount }}</dd>
+                <dd class="font-mono text-secondary">
+                  {{ displayParamCount }}
+                </dd>
               </div>
               <div class="flex justify-between">
                 <dt class="text-muted">优化器</dt>
@@ -693,7 +734,9 @@ function diagnoseTraining(): void {
               </div>
               <div class="flex justify-between">
                 <dt class="text-muted">当前学习率</dt>
-                <dd class="font-mono text-secondary">{{ learningRate.toFixed(4) }}</dd>
+                <dd class="font-mono text-secondary">
+                  {{ learningRate.toFixed(4) }}
+                </dd>
               </div>
               <div class="flex justify-between">
                 <dt class="text-muted">会话状态</dt>

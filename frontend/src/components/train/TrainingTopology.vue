@@ -81,10 +81,7 @@ const edgePaths = computed(() =>
       const target = nodeMap.value.get(edge.target)
       if (!source || !target) return null
 
-      const start = project(
-        source.x + NODE_WIDTH / 2,
-        source.y + NODE_HEIGHT,
-      )
+      const start = project(source.x + NODE_WIDTH / 2, source.y + NODE_HEIGHT)
       const end = project(target.x + NODE_WIDTH / 2, target.y)
       const delta = Math.max(10, Math.abs(end.y - start.y) * 0.5)
 

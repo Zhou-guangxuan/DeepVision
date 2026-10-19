@@ -226,7 +226,9 @@ function logout(): void {
         <span class="hidden text-sm text-secondary sm:inline">
           {{ auth.user?.username ?? '已登录' }}
         </span>
-        <AppButton variant="secondary" size="sm" @click="logout">退出</AppButton>
+        <AppButton variant="secondary" size="sm" @click="logout"
+          >退出</AppButton
+        >
       </div>
     </header>
 
@@ -236,7 +238,9 @@ function logout(): void {
         v-if="!file && !result"
         class="cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition-colors duration-base"
         :style="{
-          borderColor: dragActive ? 'var(--brand-cyan)' : 'var(--border-default)',
+          borderColor: dragActive
+            ? 'var(--brand-cyan)'
+            : 'var(--border-default)',
           background: dragActive ? 'rgba(34, 211, 238, 0.06)' : 'transparent',
         }"
         @click="pickFile"
@@ -287,7 +291,10 @@ function logout(): void {
 
         <!-- 预览 -->
         <AppCard class="mt-4" padding="none">
-          <div class="border-b px-4 py-3" :style="{ borderColor: 'var(--border-subtle)' }">
+          <div
+            class="border-b px-4 py-3"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
             <h2 class="text-sm font-medium text-primary">
               数据预览（前 {{ Math.min(PREVIEW_ROWS, rows.length) }} 行）
             </h2>
@@ -323,7 +330,11 @@ function logout(): void {
                           : 'var(--text-secondary)',
                     }"
                   >
-                    {{ (row[columnIndex] ?? '').trim() === '' ? '（空）' : row[columnIndex] }}
+                    {{
+                      (row[columnIndex] ?? '').trim() === ''
+                        ? '（空）'
+                        : row[columnIndex]
+                    }}
                   </td>
                 </tr>
               </tbody>
@@ -333,7 +344,10 @@ function logout(): void {
 
         <!-- 列角色 -->
         <AppCard class="mt-4" padding="none">
-          <div class="border-b px-4 py-3" :style="{ borderColor: 'var(--border-subtle)' }">
+          <div
+            class="border-b px-4 py-3"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
             <h2 class="text-sm font-medium text-primary">列角色</h2>
             <p class="mt-1 text-xs text-muted">
               勾选特征列，并选择一列作为目标标签
@@ -405,7 +419,11 @@ function logout(): void {
               / {{ rows.length }}
             </span>
           </div>
-          <p v-if="selectionError" class="mt-3 text-xs text-danger" role="alert">
+          <p
+            v-if="selectionError"
+            class="mt-3 text-xs text-danger"
+            role="alert"
+          >
             {{ selectionError }}
           </p>
         </AppCard>
@@ -430,7 +448,9 @@ function logout(): void {
               <h2 class="text-lg font-semibold text-primary">数据集已保存</h2>
               <p class="mt-1 text-sm text-secondary">
                 {{ result.name }} · 目标列
-                <span class="font-mono text-primary">{{ result.target_column }}</span>
+                <span class="font-mono text-primary">{{
+                  result.target_column
+                }}</span>
               </p>
             </div>
             <span class="dv-badge dv-badge--success">成功</span>
@@ -449,13 +469,17 @@ function logout(): void {
               :style="{ borderColor: 'var(--border-subtle)' }"
             >
               <p class="text-[11px] text-muted">{{ item.label }}</p>
-              <p class="mt-1 font-mono text-sm text-primary">{{ item.value }}</p>
+              <p class="mt-1 font-mono text-sm text-primary">
+                {{ item.value }}
+              </p>
             </div>
           </div>
 
           <!-- 后端返回的统计 -->
           <div class="mt-6">
-            <h3 class="text-sm font-medium text-primary">特征统计（后端计算）</h3>
+            <h3 class="text-sm font-medium text-primary">
+              特征统计（后端计算）
+            </h3>
             <div class="mt-2 overflow-x-auto">
               <table class="w-full text-left text-xs">
                 <thead>

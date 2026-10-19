@@ -40,12 +40,24 @@ function onSelect(key: string, event: Event): void {
 <template>
   <aside
     class="flex h-full w-80 shrink-0 flex-col border-l"
-    :style="{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }"
+    :style="{
+      borderColor: 'var(--border-subtle)',
+      background: 'var(--bg-surface)',
+    }"
   >
-    <div class="border-b px-4 py-4" :style="{ borderColor: 'var(--border-subtle)' }">
+    <div
+      class="border-b px-4 py-4"
+      :style="{ borderColor: 'var(--border-subtle)' }"
+    >
       <h2 class="text-sm font-semibold text-primary">属性</h2>
-      <p v-if="node" class="mt-1 flex items-center gap-1.5 text-xs text-secondary">
-        <span class="h-1.5 w-1.5 rounded-full" :style="{ background: accent }" />
+      <p
+        v-if="node"
+        class="mt-1 flex items-center gap-1.5 text-xs text-secondary"
+      >
+        <span
+          class="h-1.5 w-1.5 rounded-full"
+          :style="{ background: accent }"
+        />
         {{ NODE_TYPE_LABEL[node.type] }}
       </p>
       <p v-else class="mt-1 text-xs text-muted">未选中节点</p>
@@ -55,7 +67,10 @@ function onSelect(key: string, event: Event): void {
       <template v-if="node">
         <div v-if="node.type === 'input'" class="space-y-4">
           <div>
-            <label class="mb-1.5 block text-xs text-secondary" :for="`f-features`">
+            <label
+              class="mb-1.5 block text-xs text-secondary"
+              :for="`f-features`"
+            >
               输入特征数
             </label>
             <input
@@ -67,9 +82,7 @@ function onSelect(key: string, event: Event): void {
               :value="node.params.features"
               @change="onNumber('features', $event, 1, 4096)"
             />
-            <p class="mt-1.5 text-[11px] text-muted">
-              通常等于 CSV 的特征列数
-            </p>
+            <p class="mt-1.5 text-[11px] text-muted">通常等于 CSV 的特征列数</p>
           </div>
         </div>
 
@@ -89,7 +102,10 @@ function onSelect(key: string, event: Event): void {
             />
           </div>
           <div>
-            <label class="mb-1.5 block text-xs text-secondary" :for="`f-activation`">
+            <label
+              class="mb-1.5 block text-xs text-secondary"
+              :for="`f-activation`"
+            >
               激活函数
             </label>
             <select
@@ -107,7 +123,10 @@ function onSelect(key: string, event: Event): void {
 
         <div v-else class="space-y-4">
           <div>
-            <label class="mb-1.5 block text-xs text-secondary" :for="`f-out-units`">
+            <label
+              class="mb-1.5 block text-xs text-secondary"
+              :for="`f-out-units`"
+            >
               输出单元数
             </label>
             <input
@@ -137,7 +156,10 @@ function onSelect(key: string, event: Event): void {
           </div>
         </div>
 
-        <div class="mt-6 border-t pt-4" :style="{ borderColor: 'var(--border-subtle)' }">
+        <div
+          class="mt-6 border-t pt-4"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
           <p class="font-mono text-[11px] text-muted">id: {{ node.id }}</p>
         </div>
       </template>

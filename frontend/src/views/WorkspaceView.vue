@@ -38,7 +38,9 @@ const graph = useGraphStore()
 const toast = useToastStore()
 const router = useRouter()
 
-const canvasRef = ref<{ addNodeAtCenter: (type: NodeType) => void } | null>(null)
+const canvasRef = ref<{ addNodeAtCenter: (type: NodeType) => void } | null>(
+  null,
+)
 const showTrainingDialog = ref(false)
 /** 中央区在 2D 编辑与 3D 只读视图之间切换（偏好持久化） */
 const IS3D_KEY = 'dv_view_3d'
@@ -88,8 +90,7 @@ async function loadLayerStats(): Promise<void> {
     const page = await listRecords(1, 1)
     const latest = page.items[0]
     const metrics = latest?.result_metrics as
-      | { layer_stats?: LayerStat[] }
-      | undefined
+      { layer_stats?: LayerStat[] } | undefined
     const stats = metrics?.layer_stats
     if (Array.isArray(stats) && stats.length > 0) {
       graph.setLayerStats(stats)

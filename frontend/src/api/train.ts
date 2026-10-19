@@ -22,10 +22,7 @@ export interface StartTrainingResponse {
 export async function startTraining(
   payload: StartTrainingPayload,
 ): Promise<StartTrainingResponse> {
-  const { data } = await http.post<StartTrainingResponse>(
-    '/api/train',
-    payload,
-  )
+  const { data } = await http.post<StartTrainingResponse>('/api/train', payload)
   return data
 }
 

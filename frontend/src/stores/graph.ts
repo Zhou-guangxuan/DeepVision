@@ -97,7 +97,10 @@ export const useGraphStore = defineStore('graph', () => {
 
   function snapshot(): Snapshot {
     return {
-      nodes: nodes.value.map((node) => ({ ...node, params: { ...node.params } })),
+      nodes: nodes.value.map((node) => ({
+        ...node,
+        params: { ...node.params },
+      })),
       edges: edges.value.map((edge) => ({ ...edge })),
     }
   }

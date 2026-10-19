@@ -13,7 +13,10 @@ export interface TokenResponse {
   user: User
 }
 
-export async function register(username: string, password: string): Promise<User> {
+export async function register(
+  username: string,
+  password: string,
+): Promise<User> {
   const { data } = await http.post<User>(
     '/api/auth/register',
     { username, password },
@@ -22,7 +25,10 @@ export async function register(username: string, password: string): Promise<User
   return data
 }
 
-export async function login(username: string, password: string): Promise<TokenResponse> {
+export async function login(
+  username: string,
+  password: string,
+): Promise<TokenResponse> {
   const { data } = await http.post<TokenResponse>(
     '/api/auth/login',
     { username, password },

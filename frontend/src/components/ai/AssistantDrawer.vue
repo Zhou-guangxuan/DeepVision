@@ -142,11 +142,10 @@ function applySuggestion(suggestion: DiagnoseSuggestion): void {
   graph.updateParams(suggestion.node_id, {
     [suggestion.field]: suggestion.to as string | number,
   })
-  appliedKeys.value = new Set([
-    ...appliedKeys.value,
-    suggestionKey(suggestion),
-  ])
-  toast.success(`已应用：${FIELD_LABEL[suggestion.field]} → ${String(suggestion.to)}`)
+  appliedKeys.value = new Set([...appliedKeys.value, suggestionKey(suggestion)])
+  toast.success(
+    `已应用：${FIELD_LABEL[suggestion.field]} → ${String(suggestion.to)}`,
+  )
 }
 
 const SEVERITY_CLASS: Record<string, string> = {
@@ -210,7 +209,9 @@ const SEVERITY_CLASS: Record<string, string> = {
         <button
           type="button"
           class="flex-1 rounded-sm px-3 py-1.5 text-xs transition-colors duration-fast"
-          :class="tab === 'chat' ? 'text-primary' : 'text-muted hover:text-secondary'"
+          :class="
+            tab === 'chat' ? 'text-primary' : 'text-muted hover:text-secondary'
+          "
           :style="tab === 'chat' ? { background: 'var(--bg-elevated)' } : {}"
           @click="tab = 'chat'"
         >
@@ -219,8 +220,14 @@ const SEVERITY_CLASS: Record<string, string> = {
         <button
           type="button"
           class="flex-1 rounded-sm px-3 py-1.5 text-xs transition-colors duration-fast"
-          :class="tab === 'diagnose' ? 'text-primary' : 'text-muted hover:text-secondary'"
-          :style="tab === 'diagnose' ? { background: 'var(--bg-elevated)' } : {}"
+          :class="
+            tab === 'diagnose'
+              ? 'text-primary'
+              : 'text-muted hover:text-secondary'
+          "
+          :style="
+            tab === 'diagnose' ? { background: 'var(--bg-elevated)' } : {}
+          "
           @click="tab = 'diagnose'"
         >
           网络诊断
@@ -229,7 +236,10 @@ const SEVERITY_CLASS: Record<string, string> = {
 
       <!-- 问答 -->
       <template v-if="tab === 'chat'">
-        <div ref="messageListRef" class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        <div
+          ref="messageListRef"
+          class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3"
+        >
           <div v-if="messages.length === 0" class="space-y-3">
             <p class="text-xs leading-relaxed text-muted">
               可以问我深度学习的基础概念，也可以让我看图之前先给点训练建议。
@@ -268,14 +278,18 @@ const SEVERITY_CLASS: Record<string, string> = {
                     }
               "
             >
-              <p class="whitespace-pre-wrap">{{ message.content }}<span v-if="message.streaming">▌</span></p>
+              <p class="whitespace-pre-wrap">
+                {{ message.content }}<span v-if="message.streaming">▌</span>
+              </p>
               <div
                 v-if="message.sources.length > 0"
                 class="mt-2 border-t pt-1.5 text-[10px] text-muted"
                 :style="{ borderColor: 'var(--border-subtle)' }"
               >
                 <p class="mb-0.5 text-secondary">参考来源</p>
-                <p v-for="source in message.sources" :key="source">· {{ source }}</p>
+                <p v-for="source in message.sources" :key="source">
+                  · {{ source }}
+                </p>
               </div>
             </div>
           </div>
@@ -351,9 +365,7 @@ const SEVERITY_CLASS: Record<string, string> = {
                 <span class="text-secondary">{{ issue.message }}</span>
               </div>
             </div>
-            <p v-else class="mt-4 text-[11px] text-muted">
-              没有发现明显问题。
-            </p>
+            <p v-else class="mt-4 text-[11px] text-muted">没有发现明显问题。</p>
 
             <div v-if="diagnosis.suggestions.length > 0" class="mt-5 space-y-2">
               <p class="text-xs font-medium text-secondary">可应用的建议</p>
@@ -377,7 +389,11 @@ const SEVERITY_CLASS: Record<string, string> = {
                     :disabled="appliedKeys.has(suggestionKey(suggestion))"
                     @click="applySuggestion(suggestion)"
                   >
-                    {{ appliedKeys.has(suggestionKey(suggestion)) ? '已应用' : '一键应用' }}
+                    {{
+                      appliedKeys.has(suggestionKey(suggestion))
+                        ? '已应用'
+                        : '一键应用'
+                    }}
                   </AppButton>
                 </div>
               </div>
