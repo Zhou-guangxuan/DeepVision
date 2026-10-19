@@ -190,19 +190,46 @@ def test_merge_plan_concatenates_inputs(
     assert steps["n4"]["inputs"] == ["n2", "n3"]
 
 
-def test_multiple_inputs_message_lists_node_ids(
+def test_multiple_inputs_and_outputs_allowed(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
-    """多处输入层时报错文案应点名具体节点，便于用户定位。"""
+    """多输入多输出是合法结构：训练时按特征切分输入、按均值合并输出。"""
     payload = _config(
         [
-            {"id": "i1", "type": "input", "params": {}},
-            {"id": "i2", "type": "input", "params": {}},
-            {"id": "o1", "type": "output", "params": {}},
+            {"id": "i1", "type": "input", "params": {"features": 2}},
+            {"id": "i2", "type": "input", "params": {"features": 2}},
+            {"id": "h1", "type": "hidden", "params": {"units": 8}},
+            {"id": "o1", "type": "output", "params": {"units": 2}},
+            {"id": "o2", "type": "output", "params": {"units": 2}},
+        ],
+        [
+            {"source": "i1", "target": "h1"},
+            {"source": "i2", "target": "h1"},
+            {"source": "h1", "target": "o1"},
+            {"source": "h1", "target": "o2"},
+        ],
+    )
+    body = client.post(
+        "/api/graph/validate", json=payload, headers=auth_headers
+    ).json()
+
+    assert body["valid"] is True, body["errors"]
+    assert not any("多个输入层" in error for error in body["errors"])
+
+
+def test_multiple_outputs_must_share_units(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """多输出按均值合并，单元数不一致无法合并。"""
+    payload = _config(
+        [
+            {"id": "i1", "type": "input", "params": {"features": 2}},
+            {"id": "o1", "type": "output", "params": {"units": 2}},
+            {"id": "o2", "type": "output", "params": {"units": 3}},
         ],
         [
             {"source": "i1", "target": "o1"},
-            {"source": "i2", "target": "o1"},
+            {"source": "i1", "target": "o2"},
         ],
     )
     body = client.post(
@@ -210,10 +237,7 @@ def test_multiple_inputs_message_lists_node_ids(
     ).json()
 
     assert body["valid"] is False
-    message = next(
-        error for error in body["errors"] if "多个输入层" in error
-    )
-    assert "i1" in message and "i2" in message
+    assert any("单元数必须一致" in error for error in body["errors"])
 
 
 def test_unreachable_node_rejected(

@@ -231,37 +231,75 @@ def _run_training(task: TrainingTask) -> None:
             raise RuntimeError("无权访问该数据集")
 
         nodes = {node["id"]: node for node in task.config["nodes"]}
-        input_node = next(
-            node for node in task.config["nodes"] if node["type"] == "input"
+        order = task.plan["order"]
+        input_ids = list(
+            task.plan.get("input_ids")
+            or [nid for nid in order if nodes[nid]["type"] == "input"]
         )
-        output_node = next(
-            node for node in task.config["nodes"] if node["type"] == "output"
+        output_ids = list(
+            task.plan.get("output_ids")
+            or [nid for nid in order if nodes[nid]["type"] == "output"]
         )
+        if not input_ids or not output_ids:
+            raise RuntimeError("拓扑缺少输入层或输出层")
 
-        task_type = str(output_node.get("params", {}).get("task", "classification"))
+        task_type = str(
+            nodes[output_ids[0]].get("params", {}).get("task", "classification")
+        )
         prepared = prepare_dataset(dataset, task_type)
 
-        declared = int(
-            input_node.get("params", {}).get("features", prepared.input_dim)
-        )
-        if declared != prepared.input_dim:
+        # 多输入：按各输入层声明的特征数依次切分特征维
+        declared_sizes = [
+            int(nodes[nid].get("params", {}).get("features", 0) or 0)
+            for nid in input_ids
+        ]
+        if any(size <= 0 for size in declared_sizes):
+            if len(input_ids) == 1:
+                declared_sizes = [prepared.input_dim]
+            else:
+                raise RuntimeError("存在多个输入层时，每个输入层都必须填写特征数")
+
+        total_declared = sum(declared_sizes)
+        if total_declared != prepared.input_dim:
+            detail = "、".join(
+                f"{nid}:{size}" for nid, size in zip(input_ids, declared_sizes)
+            )
             raise RuntimeError(
-                f"输入层特征数 {declared} 与预处理后的实际特征数 "
-                f"{prepared.input_dim} 不一致（类别特征会做独热编码，请按实际维度调整输入层）"
+                f"输入层特征数之和 {total_declared}（{detail}）与预处理后的实际特征数 "
+                f"{prepared.input_dim} 不一致（类别特征会做独热编码，请按实际维度分配）"
             )
 
+        input_slices: dict[str, tuple[int, int]] = {}
+        cursor = 0
+        for nid, size in zip(input_ids, declared_sizes):
+            input_slices[nid] = (cursor, cursor + size)
+            cursor += size
+
+        # 多输出：按均值合并，因此每个输出层的单元数必须与类别数一致
         if task_type == "classification":
-            units = int(
-                output_node.get("params", {}).get(
-                    "units", prepared.num_classes or 2
+            for nid in output_ids:
+                units = int(
+                    nodes[nid].get("params", {}).get("units", 0)
+                    or (prepared.num_classes or 2)
                 )
-            )
-            if units != (prepared.num_classes or 0):
+                if units != (prepared.num_classes or 0):
+                    raise RuntimeError(
+                        f"输出层 {nid} 的单元数 {units} 与类别数 "
+                        f"{prepared.num_classes} 不一致"
+                    )
+        elif len(output_ids) > 1:
+            shapes = {
+                int(nodes[nid].get("params", {}).get("units", 1) or 1)
+                for nid in output_ids
+            }
+            if len(shapes) > 1:
                 raise RuntimeError(
-                    f"输出层单元数 {units} 与类别数 {prepared.num_classes} 不一致"
+                    "多个输出层的单元数必须一致（训练时按均值合并输出）"
                 )
 
-        net = build_dag_net(task.plan, nodes, prepared.input_dim)
+        net = build_dag_net(
+            task.plan, nodes, prepared.input_dim, input_slices=input_slices
+        )
 
         x_train = torch.from_numpy(prepared.x_train)
         y_train = torch.from_numpy(prepared.y_train)
@@ -286,6 +324,8 @@ def _run_training(task: TrainingTask) -> None:
                 "task_id": task.task_id,
                 "total_epochs": epochs,
                 "input_dim": prepared.input_dim,
+                "input_layers": len(input_ids),
+                "output_layers": len(output_ids),
                 "task": task_type,
                 "classes": prepared.classes,
             },

@@ -75,4 +75,7 @@ def build_execution_plan(config: ModelConfigIn) -> dict | None:
         "merge": MERGE_STRATEGY,
         "order": order,
         "steps": steps,
+        # 多输入按特征切分、多输出按均值合并，均依赖这两个顺序
+        "input_ids": [nid for nid in order if node_map[nid].type == "input"],
+        "output_ids": [nid for nid in order if node_map[nid].type == "output"],
     }

@@ -18,8 +18,9 @@ ACTIVATIONS = {
 class DagNet(nn.Module):
     """按拓扑序执行的前馈网络。
 
-    输入节点直接返回输入张量；其余节点为 Linear（隐藏层后接激活函数），
-    多前驱节点先 concat 再线性变换。
+    - 输入节点按 `input_slices` 从特征维切出自己的那一份；
+    - 其余节点为 Linear（隐藏层后接激活函数），多前驱节点先 concat 再线性变换；
+    - 多个输出节点时，按逐元素均值合并成一个输出。
     """
 
     def __init__(
@@ -27,12 +28,24 @@ class DagNet(nn.Module):
         plan: dict,
         nodes: dict[str, dict],
         input_dim: int,
+        input_slices: dict[str, tuple[int, int]] | None = None,
     ) -> None:
         super().__init__()
 
         self.steps: list[dict] = plan["steps"]
         self.merge: str = plan.get("merge", "concat")
-        self.output_id: str = plan["order"][-1]
+        self.output_ids: list[str] = list(
+            plan.get("output_ids")
+            or [nid for nid in plan["order"] if nodes[nid]["type"] == "output"]
+        )
+        self.input_ids: list[str] = list(
+            plan.get("input_ids")
+            or [nid for nid in plan["order"] if nodes[nid]["type"] == "input"]
+        )
+        if not self.output_ids:
+            raise ValueError("拓扑缺少输出层")
+        self.output_id: str = self.output_ids[0]
+        self.input_slices = input_slices or self._default_slices(input_dim)
         self.ops = nn.ModuleDict()
 
         dims: dict[str, int] = {}
@@ -42,7 +55,8 @@ class DagNet(nn.Module):
             node = nodes[node_id]
 
             if node["type"] == "input":
-                dims[node_id] = input_dim
+                start, end = self.input_slices[node_id]
+                dims[node_id] = end - start
                 continue
 
             in_dim = sum(dims[source] for source in step["inputs"])
@@ -67,6 +81,21 @@ class DagNet(nn.Module):
 
             dims[node_id] = units
 
+    def _default_slices(self, input_dim: int) -> dict[str, tuple[int, int]]:
+        """未显式指定切分时：单输入取全部，多输入均分。"""
+        if len(self.input_ids) == 1:
+            return {self.input_ids[0]: (0, input_dim)}
+
+        count = max(1, len(self.input_ids))
+        base = max(1, input_dim // count)
+        slices: dict[str, tuple[int, int]] = {}
+        cursor = 0
+        for index, node_id in enumerate(self.input_ids):
+            end = input_dim if index == count - 1 else min(cursor + base, input_dim)
+            slices[node_id] = (cursor, end)
+            cursor = end
+        return slices
+
     def forward_intermediates(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         """返回拓扑序中每个节点的输出，供可视化使用。"""
         outputs: dict[str, torch.Tensor] = {}
@@ -75,7 +104,8 @@ class DagNet(nn.Module):
             node_id = step["node_id"]
 
             if node_id not in self.ops:
-                outputs[node_id] = x
+                start, end = self.input_slices[node_id]
+                outputs[node_id] = x[:, start:end]
                 continue
 
             parts = [outputs[source] for source in step["inputs"]]
@@ -85,12 +115,25 @@ class DagNet(nn.Module):
         return outputs
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.forward_intermediates(x)[self.output_id]
+        outputs = self.forward_intermediates(x)
+
+        if len(self.output_ids) == 1:
+            return outputs[self.output_ids[0]]
+
+        # 多输出：逐元素取均值，等价于把多个头的预测做平均集成
+        stacked = torch.stack([outputs[nid] for nid in self.output_ids], dim=0)
+        return stacked.mean(dim=0)
 
 
 def build_dag_net(
     plan: dict,
     nodes: dict[str, dict],
     input_dim: int,
+    input_slices: dict[str, tuple[int, int]] | None = None,
 ) -> DagNet:
-    return DagNet(plan=plan, nodes=nodes, input_dim=input_dim)
+    return DagNet(
+        plan=plan,
+        nodes=nodes,
+        input_dim=input_dim,
+        input_slices=input_slices,
+    )

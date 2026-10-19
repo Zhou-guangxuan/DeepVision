@@ -99,18 +99,12 @@ def validate_model_config(payload: ModelConfigIn) -> dict:
         errors.append("缺少输入层节点")
     if not outputs:
         errors.append("缺少输出层节点")
-    if len(inputs) > 1:
-        errors.append(
-            "存在多个输入层（"
-            + "、".join(node.id for node in inputs)
-            + "），请只保留一个输入层"
-        )
+    # 多输入：按各输入层声明的特征数切分特征；多输出：按均值合并，因此单元数必须一致
     if len(outputs) > 1:
-        errors.append(
-            "存在多个输出层（"
-            + "、".join(node.id for node in outputs)
-            + "），请只保留一个输出层"
-        )
+        declared_units = {int(n.params.get("units", 0) or 0) for n in outputs}
+        declared_units.discard(0)
+        if len(declared_units) > 1:
+            errors.append("多个输出层的单元数必须一致（训练时按均值合并输出）")
 
     # 成环检测：独立于其他校验执行，尽量一次把所有问题报全
     plan = None
@@ -124,18 +118,22 @@ def validate_model_config(payload: ModelConfigIn) -> dict:
         if not acyclic:
             errors.append("拓扑中存在环，神经网络必须是有向无环图")
 
-    # 可达性：所有节点都必须从输入层可达，否则无法计算
-    if acyclic and len(inputs) == 1:
-        reachable = _reachable(inputs[0].id, adjacency)
+    # 可达性：所有节点都必须从某个输入层可达，否则无法计算
+    if acyclic and inputs:
+        reachable: set[str] = set()
+        for node in inputs:
+            reachable |= _reachable(node.id, adjacency)
         for nid in [item for item in ids if item not in reachable]:
             errors.append(f"节点 {nid} 无法从输入层到达")
 
-    # 反向可达：节点输出应能影响最终结果，否则是死分支
-    if acyclic and len(outputs) == 1:
+    # 反向可达：节点输出应能影响某个输出层，否则是死分支
+    if acyclic and outputs:
         reverse: dict[str, list[str]] = defaultdict(list)
         for edge in payload.edges:
             reverse[edge.target].append(edge.source)
-        useful = _reachable(outputs[0].id, reverse)
+        useful: set[str] = set()
+        for node in outputs:
+            useful |= _reachable(node.id, reverse)
         for nid in ids:
             if nid not in useful:
                 warnings.append(f"节点 {nid} 的输出不会影响最终结果")

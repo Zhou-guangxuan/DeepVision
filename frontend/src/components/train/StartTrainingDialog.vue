@@ -31,7 +31,7 @@ const errorMessage = ref('')
 
 /**
  * 打开对话框时先做结构预检，避免点下按钮才报错。
- * 与后端 /api/graph/validate 的规则保持一致（单输入、单输出）。
+ * 允许多输入 / 多输出：多输入按各输入层特征数依次切分，多输出按均值合并。
  */
 const structuralError = computed(() => {
   const inputs = graph.nodes.filter((node) => node.type === 'input').length
@@ -39,10 +39,29 @@ const structuralError = computed(() => {
 
   if (graph.nodes.length === 0) return '画布为空，请先搭建网络'
   if (inputs === 0) return '缺少输入层节点，请拖入一个输入层'
-  if (inputs > 1) return `画布上有 ${inputs} 个输入层，训练需要且仅需要 1 个`
   if (outputs === 0) return '缺少输出层节点，请拖入一个输出层'
-  if (outputs > 1) return `画布上有 ${outputs} 个输出层，训练需要且仅需要 1 个`
   return ''
+})
+
+const multiIoHint = computed(() => {
+  const inputs = graph.nodes.filter((node) => node.type === 'input')
+  const outputs = graph.nodes.filter((node) => node.type === 'output')
+  if (inputs.length <= 1 && outputs.length <= 1) return ''
+
+  const parts: string[] = []
+  if (inputs.length > 1) {
+    const total = inputs.reduce(
+      (sum, node) => sum + Number(node.params.features ?? 0),
+      0,
+    )
+    parts.push(
+      `多输入：各输入层特征数之和需等于数据集维度，当前声明为 ${total}`,
+    )
+  }
+  if (outputs.length > 1) {
+    parts.push('多输出：各输出层单元数需一致，训练时按均值合并')
+  }
+  return parts.join('；')
 })
 
 const blockReason = computed(() => structuralError.value || errorMessage.value)
@@ -195,6 +214,10 @@ async function onSubmit(): Promise<void> {
               />
             </div>
           </div>
+
+          <p v-if="multiIoHint" class="text-[11px] leading-relaxed text-muted">
+            {{ multiIoHint }}
+          </p>
 
           <p v-if="blockReason" class="text-xs text-danger" role="alert">
             {{ blockReason }}

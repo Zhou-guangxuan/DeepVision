@@ -246,3 +246,113 @@ def test_train_with_merge_topology(
                 break
 
     assert event["type"] == "completed"
+
+
+def _csv3(rows: int = 80) -> bytes:
+    lines = ["f1,f2,f3,label"]
+    for index in range(rows):
+        lines.append(
+            f"{index}.0,{(index * 2) % 10}.0,{(index * 3) % 7}.0,{index % 2}"
+        )
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _upload3(client: TestClient, headers: dict[str, str]):
+    return client.post(
+        "/api/datasets",
+        files={"file": ("m.csv", _csv3(), "text/csv")},
+        data={
+            "feature_columns": json.dumps(["f1", "f2", "f3"]),
+            "target_column": "label",
+            "missing_strategy": "mean",
+        },
+        headers=headers,
+    )
+
+
+def _collect(client: TestClient, task_id: str, headers: dict[str, str]) -> list[dict]:
+    events: list[dict] = []
+    with client.websocket_connect(
+        f"/ws/train/{task_id}?token={_token(headers)}"
+    ) as ws:
+        while True:
+            event = ws.receive_json()
+            events.append(event)
+            if event["type"] in {"completed", "failed", "stopped"}:
+                break
+    return events
+
+
+def _multi_io_config(input_sizes: list[int], output_units: list[int]) -> dict:
+    nodes = [
+        {"id": f"i{index}", "type": "input", "params": {"features": size}}
+        for index, size in enumerate(input_sizes, start=1)
+    ]
+    nodes.append(
+        {"id": "h1", "type": "hidden", "params": {"units": 8, "activation": "relu"}}
+    )
+    outputs = [
+        {
+            "id": f"o{index}",
+            "type": "output",
+            "params": {"units": units, "task": "classification"},
+        }
+        for index, units in enumerate(output_units, start=1)
+    ]
+    nodes.extend(outputs)
+
+    edges = [
+        {"source": f"i{index}", "target": "h1"}
+        for index in range(1, len(input_sizes) + 1)
+    ]
+    edges.extend(
+        {"source": "h1", "target": f"o{index}"}
+        for index in range(1, len(output_units) + 1)
+    )
+    return {"version": 1, "nodes": nodes, "edges": edges}
+
+
+def test_train_multi_input_multi_output(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """多输入按特征切分（2+1=3），多输出按均值合并。"""
+    dataset = _upload3(client, auth_headers).json()
+
+    started = client.post(
+        "/api/train",
+        json={
+            "dataset_id": dataset["id"],
+            "model_config": _multi_io_config([2, 1], [2, 2]),
+            "hyperparameters": {"epochs": 2, "batch_size": 16},
+        },
+        headers=auth_headers,
+    )
+    assert started.status_code == 202, started.text
+
+    events = _collect(client, started.json()["task_id"], auth_headers)
+    assert events[0]["type"] == "started"
+    assert events[0]["input_layers"] == 2
+    assert events[0]["output_layers"] == 2
+    assert events[-1]["type"] == "completed", events[-1]
+
+
+def test_multi_input_feature_sum_must_match(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """多输入的特征数之和必须等于预处理后的维度（2+2≠3）。"""
+    dataset = _upload3(client, auth_headers).json()
+
+    started = client.post(
+        "/api/train",
+        json={
+            "dataset_id": dataset["id"],
+            "model_config": _multi_io_config([2, 2], [2]),
+            "hyperparameters": {"epochs": 1, "batch_size": 16},
+        },
+        headers=auth_headers,
+    )
+    assert started.status_code == 202, started.text
+
+    events = _collect(client, started.json()["task_id"], auth_headers)
+    assert events[-1]["type"] == "failed"
+    assert "特征数之和" in events[-1]["reason"]
