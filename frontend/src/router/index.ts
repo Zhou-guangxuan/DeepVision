@@ -31,6 +31,11 @@ const router = createRouter({
       component: () => import('@/views/TrainView.vue'),
     },
     {
+      path: '/lab',
+      name: 'lab',
+      component: () => import('@/views/LabView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/workspace',
     },
