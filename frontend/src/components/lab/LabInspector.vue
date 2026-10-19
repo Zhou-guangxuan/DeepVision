@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import * as echarts from 'echarts'
+import type { ECharts } from 'echarts'
 
 import {
+  attentionLab,
   inspectLab,
   projectLab,
+  type LabAttentionHistory,
   type LabInspect,
   type LabProjection,
 } from '@/api/lab'
@@ -13,30 +17,37 @@ import AppButton from '@/components/ui/AppButton.vue'
  * 教学实验室的「观察」弹窗：
  * - 传播：逐层单步查看前向激活 / 反向梯度；
  * - 注意力：输入特征的贡献（|梯度 × 输入|）；
- * - 投影：指定层激活的 PCA 二维散点。
+ * - 注意力曲线：逐 epoch 观察关注点如何变化；
+ * - 投影：指定层激活的 PCA / t-SNE 二维散点。
  */
 
 const props = defineProps<{
   open: boolean
   taskId: string | null
   layers: number[]
-  initialTab?: 'propagation' | 'attention' | 'projection'
+  initialTab?: 'propagation' | 'attention' | 'trend' | 'projection'
 }>()
 
 const emit = defineEmits<{ close: []; saliency: [number[]] }>()
 
-type Tab = 'propagation' | 'attention' | 'projection'
+type Tab = 'propagation' | 'attention' | 'trend' | 'projection'
 
 const tab = ref<Tab>('propagation')
 const sampleIndex = ref(0)
 const inspect = ref<LabInspect | null>(null)
 const projection = ref<LabProjection | null>(null)
 const projectionLayer = ref(0)
+const projectionMethod = ref<'pca' | 'tsne'>('pca')
+const trend = ref<LabAttentionHistory | null>(null)
 const loading = ref(false)
+const exporting = ref(false)
 const errorMessage = ref('')
 const step = ref(0)
 const direction = ref<'forward' | 'backward'>('forward')
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const trendRef = ref<HTMLElement | null>(null)
+const modalRef = ref<HTMLElement | null>(null)
+let trendChart: ECharts | null = null
 
 const layerCount = computed(() => inspect.value?.layers.length ?? 0)
 
@@ -92,13 +103,112 @@ async function loadProjection(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    projection.value = await projectLab(props.taskId, projectionLayer.value)
+    projection.value = await projectLab(
+      props.taskId,
+      projectionLayer.value,
+      projectionMethod.value,
+    )
     await nextTick()
     drawProjection()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '降维投影失败'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadAttentionTrend(): Promise<void> {
+  if (!props.taskId) {
+    errorMessage.value = '请先开始一次训练'
+    return
+  }
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    trend.value = await attentionLab(props.taskId)
+    await nextTick()
+    renderTrend()
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error ? error.message : '读取注意力曲线失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+function renderTrend(): void {
+  if (!trendRef.value || !trend.value) return
+  if (!trendChart) trendChart = echarts.init(trendRef.value)
+
+  const colors = [
+    '#22d3ee',
+    '#a78bfa',
+    '#34d399',
+    '#f97316',
+    '#f472b6',
+    '#facc15',
+    '#60a5fa',
+    '#fb7185',
+  ]
+
+  trendChart.setOption(
+    {
+      backgroundColor: 'transparent',
+      grid: { left: 44, right: 12, top: 28, bottom: 26 },
+      tooltip: { trigger: 'axis' },
+      legend: {
+        textStyle: { color: '#94a3b8', fontSize: 10 },
+        top: 0,
+        type: 'scroll',
+      },
+      xAxis: {
+        type: 'category',
+        data: trend.value.epochs,
+        boundaryGap: false,
+        axisLine: { lineStyle: { color: '#334155' } },
+        axisLabel: { color: '#94a3b8', fontSize: 10 },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: '#94a3b8', fontSize: 10 },
+        splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)' } },
+      },
+      series: trend.value.series.map((item, index) => ({
+        name: `f${item.feature}`,
+        type: 'line' as const,
+        smooth: true,
+        showSymbol: false,
+        data: item.values,
+        itemStyle: { color: colors[index % colors.length] },
+      })),
+    },
+    true,
+  )
+}
+
+function onProjectionMethodChange(): void {
+  void loadProjection()
+}
+
+/** 把当前弹窗内容导出为 PNG */
+async function exportImage(): Promise<void> {
+  if (!modalRef.value || exporting.value) return
+  exporting.value = true
+  try {
+    // html2canvas 只在导出时用，按需加载避免拖慢实验室首屏
+    const { default: html2canvas } = await import('html2canvas')
+    const canvas = await html2canvas(modalRef.value, {
+      backgroundColor: '#0b1220',
+      scale: 2,
+    })
+    const link = document.createElement('a')
+    link.href = canvas.toDataURL('image/png')
+    link.download = `deepvision-inspector-${tab.value}-${Date.now()}.png`
+    link.click()
+  } catch {
+    errorMessage.value = '导出图片失败，请重试'
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -153,6 +263,9 @@ function switchTab(next: Tab): void {
   if (next === 'projection' && projection.value === null) {
     void loadProjection()
   }
+  if (next === 'trend' && trend.value === null) {
+    void loadAttentionTrend()
+  }
 }
 
 watch(
@@ -164,13 +277,20 @@ watch(
       void runInspect()
     }
     if (tab.value === 'projection') {
+      if (projection.value === null) void loadProjection()
       void nextTick().then(drawProjection)
+    }
+    if (tab.value === 'trend') {
+      if (trend.value === null) void loadAttentionTrend()
+      void nextTick().then(renderTrend)
     }
   },
 )
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', drawProjection)
+  trendChart?.dispose()
+  trendChart = null
 })
 </script>
 
@@ -181,6 +301,7 @@ onBeforeUnmount(() => {
     @click.self="emit('close')"
   >
     <div
+      ref="modalRef"
       class="flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border"
       :style="{
         borderColor: 'var(--border-default)',
@@ -196,6 +317,7 @@ onBeforeUnmount(() => {
             v-for="item in [
               { key: 'propagation', label: '前向 / 反向传播' },
               { key: 'attention', label: '注意力' },
+              { key: 'trend', label: '注意力曲线' },
               { key: 'projection', label: '降维投影' },
             ]"
             :key="item.key"
@@ -214,9 +336,19 @@ onBeforeUnmount(() => {
             {{ item.label }}
           </button>
         </div>
-        <AppButton variant="ghost" size="sm" @click="emit('close')"
-          >关闭</AppButton
-        >
+        <div class="flex items-center gap-2">
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :loading="exporting"
+            @click="exportImage"
+          >
+            导出图片
+          </AppButton>
+          <AppButton variant="ghost" size="sm" @click="emit('close')"
+            >关闭</AppButton
+          >
+        </div>
       </header>
 
       <div class="min-h-0 flex-1 overflow-y-auto p-4">
@@ -426,6 +558,29 @@ onBeforeUnmount(() => {
           </p>
         </template>
 
+        <!-- 注意力曲线 -->
+        <template v-else-if="tab === 'trend'">
+          <div class="flex flex-wrap items-end gap-2">
+            <AppButton size="sm" :loading="loading" @click="loadAttentionTrend">
+              刷新曲线
+            </AppButton>
+            <span v-if="trend" class="text-[11px] text-muted">
+              共 {{ trend.epochs.length }} 个 epoch · {{ trend.series.length }}
+              个输入特征
+            </span>
+          </div>
+          <div
+            class="relative mt-3 h-[300px] w-full overflow-hidden rounded-md border"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <div ref="trendRef" class="h-full w-full" />
+          </div>
+          <p class="mt-2 text-[10px] text-muted">
+            每条线代表一个输入特征的 |∂loss/∂x × x| 随 epoch
+            的均值；曲线走高说明模型越来越依赖该特征。
+          </p>
+        </template>
+
         <!-- 投影 -->
         <template v-else>
           <div class="flex flex-wrap items-end gap-2">
@@ -444,12 +599,29 @@ onBeforeUnmount(() => {
                 </option>
               </select>
             </label>
+            <label class="text-[11px] text-secondary">
+              方法
+              <select
+                v-model="projectionMethod"
+                class="dv-select ml-1 h-8 text-xs"
+                @change="onProjectionMethodChange"
+              >
+                <option value="pca">PCA</option>
+                <option value="tsne">t-SNE</option>
+              </select>
+            </label>
             <AppButton size="sm" :loading="loading" @click="loadProjection">
               重新投影
             </AppButton>
-            <span v-if="projection" class="text-[11px] text-muted">
+            <span
+              v-if="projection && projection.method === 'pca'"
+              class="text-[11px] text-muted"
+            >
               主成分解释度 {{ (projection.explained[0] * 100).toFixed(1) }}% /
               {{ (projection.explained[1] * 100).toFixed(1) }}%
+            </span>
+            <span v-else-if="projection" class="text-[11px] text-muted">
+              t-SNE 为非线性投影，无解释度指标
             </span>
           </div>
 
@@ -460,7 +632,9 @@ onBeforeUnmount(() => {
             <canvas ref="canvasRef" class="h-full w-full" />
           </div>
           <p class="mt-2 text-[10px] text-muted">
-            青色为类别 0、橙色为类别 1；坐标是该层激活经 PCA 降到二维后的位置。
+            青色为类别 0、橙色为类别 1；坐标是该层激活经
+            {{ projection?.method === 'tsne' ? 't-SNE' : 'PCA' }}
+            降到二维后的位置。
           </p>
         </template>
       </div>

@@ -76,8 +76,14 @@ export interface LabInspect {
 export interface LabProjection {
   layer_index: number
   layer_count: number
+  method: 'pca' | 'tsne'
   explained: number[]
   points: { x: number; y: number; label: number }[]
+}
+
+export interface LabAttentionHistory {
+  epochs: number[]
+  series: { feature: number; values: number[] }[]
 }
 
 /** 单样本前向 + 反向，返回逐层激活 / 梯度与输入注意力 */
@@ -91,14 +97,25 @@ export async function inspectLab(
   return data
 }
 
-/** 指定层的 PCA 降维投影 */
+/** 指定层的降维投影：pca（线性）或 tsne（非线性） */
 export async function projectLab(
   taskId: string,
   layer: number,
+  method: 'pca' | 'tsne' = 'pca',
 ): Promise<LabProjection> {
   const { data } = await http.get<LabProjection>(
     `/api/lab/${taskId}/projection`,
-    { params: { layer } },
+    { params: { layer, method } },
+  )
+  return data
+}
+
+/** 逐 epoch 的输入注意力，用于观察模型关注点如何变化 */
+export async function attentionLab(
+  taskId: string,
+): Promise<LabAttentionHistory> {
+  const { data } = await http.get<LabAttentionHistory>(
+    `/api/lab/${taskId}/attention`,
   )
   return data
 }

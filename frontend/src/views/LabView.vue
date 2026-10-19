@@ -40,12 +40,15 @@ const STATUS_TEXT: Record<LabStatus, string> = {
   failed: 'failed',
 }
 
+type InspectorTab = 'propagation' | 'attention' | 'trend' | 'projection'
+
 const NAV_ITEMS: {
   label: string
-  tab: 'propagation' | 'attention' | 'projection'
+  tab: InspectorTab
 }[] = [
   { label: '前向/反向传播', tab: 'propagation' },
   { label: '注意力 3D', tab: 'attention' },
+  { label: '注意力曲线', tab: 'trend' },
   { label: '降维投影', tab: 'projection' },
 ]
 
@@ -82,9 +85,7 @@ const answerMode = ref<'llm' | 'fallback' | ''>('')
 const answerNote = ref('')
 const engine = ref<'auto' | 'llm' | 'offline'>('auto')
 const inspectorOpen = ref(false)
-const inspectorTab = ref<'propagation' | 'attention' | 'projection'>(
-  'propagation',
-)
+const inspectorTab = ref<InspectorTab>('propagation')
 /** 输入特征注意力，用于在 3D 中高亮输入层 */
 const saliency = ref<number[]>([])
 
@@ -94,7 +95,7 @@ const renderedAnswer = computed(() => {
   return DOMPurify.sanitize(html)
 })
 
-function openInspector(tab: 'propagation' | 'attention' | 'projection'): void {
+function openInspector(tab: InspectorTab): void {
   inspectorTab.value = tab
   inspectorOpen.value = true
 }
