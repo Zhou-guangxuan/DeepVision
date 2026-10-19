@@ -41,17 +41,20 @@ function authHeaders(): Record<string, string> {
   }
 }
 
+export type ChatMode = 'auto' | 'llm' | 'offline'
+
 /** 读取 SSE 流，逐个回调事件 */
 export async function streamChat(
   message: string,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
+  mode: ChatMode = 'auto',
 ): Promise<void> {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
   const response = await fetch(`${base}/api/ai/chat`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, mode }),
     signal,
   })
 

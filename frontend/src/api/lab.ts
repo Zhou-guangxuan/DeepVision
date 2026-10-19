@@ -53,3 +53,52 @@ export async function stopLab(taskId: string): Promise<LabControlResponse> {
   )
   return data
 }
+
+export interface LabLayerInspect {
+  index: number
+  size: number
+  activation: number[]
+  gradient: number[]
+}
+
+export interface LabInspect {
+  sample_index: number
+  total_samples: number
+  true_label: number
+  prediction: number
+  probabilities: number[]
+  input: number[]
+  saliency: number[]
+  layers: LabLayerInspect[]
+  loss: number
+}
+
+export interface LabProjection {
+  layer_index: number
+  layer_count: number
+  explained: number[]
+  points: { x: number; y: number; label: number }[]
+}
+
+/** 单样本前向 + 反向，返回逐层激活 / 梯度与输入注意力 */
+export async function inspectLab(
+  taskId: string,
+  index: number,
+): Promise<LabInspect> {
+  const { data } = await http.get<LabInspect>(`/api/lab/${taskId}/inspect`, {
+    params: { index },
+  })
+  return data
+}
+
+/** 指定层的 PCA 降维投影 */
+export async function projectLab(
+  taskId: string,
+  layer: number,
+): Promise<LabProjection> {
+  const { data } = await http.get<LabProjection>(
+    `/api/lab/${taskId}/projection`,
+    { params: { layer } },
+  )
+  return data
+}

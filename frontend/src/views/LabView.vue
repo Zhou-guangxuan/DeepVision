@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 import { streamChat } from '@/api/ai'
 import {
@@ -14,6 +16,7 @@ import {
   type LabOptimizer,
 } from '@/api/lab'
 import LabDashboard from '@/components/lab/LabDashboard.vue'
+import LabInspector from '@/components/lab/LabInspector.vue'
 import LabNetwork3D from '@/components/lab/LabNetwork3D.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import {
@@ -42,7 +45,11 @@ const STATUS_TEXT: Record<LabStatus, string> = {
   failed: 'failed',
 }
 
-const NAV_ITEMS = ['训练/求解器', '前向/反向传播', '注意力 3D', '降维投影']
+const NAV_ITEMS: { label: string; tab: 'propagation' | 'attention' | 'projection' }[] = [
+  { label: '前向/反向传播', tab: 'propagation' },
+  { label: '注意力 3D', tab: 'attention' },
+  { label: '降维投影', tab: 'projection' },
+]
 
 const router = useRouter()
 const toast = useToastStore()
@@ -73,7 +80,22 @@ const answer = ref('')
 const sources = ref<string[]>([])
 const asking = ref(false)
 const answerMs = ref(0)
-const engine = ref<'auto' | 'offline'>('auto')
+const engine = ref<'auto' | 'llm' | 'offline'>('auto')
+const inspectorOpen = ref(false)
+const inspectorTab = ref<'propagation' | 'attention' | 'projection'>('propagation')
+/** 输入特征注意力，用于在 3D 中高亮输入层 */
+const saliency = ref<number[]>([])
+
+const renderedAnswer = computed(() => {
+  if (!answer.value) return ''
+  const html = marked.parse(answer.value, { async: false }) as string
+  return DOMPurify.sanitize(html)
+})
+
+function openInspector(tab: 'propagation' | 'attention' | 'projection'): void {
+  inspectorTab.value = tab
+  inspectorOpen.value = true
+}
 
 const layers = computed(() => [2, ...hiddenLayers.value, 2])
 
@@ -223,10 +245,15 @@ async function ask(text?: string): Promise<void> {
   const started = performance.now()
 
   try {
-    await streamChat(content, (event) => {
-      if (event.type === 'delta' && event.text) answer.value += event.text
-      if (event.type === 'done') sources.value = event.sources ?? []
-    })
+    await streamChat(
+      content,
+      (event) => {
+        if (event.type === 'delta' && event.text) answer.value += event.text
+        if (event.type === 'done') sources.value = event.sources ?? []
+      },
+      undefined,
+      engine.value,
+    )
   } catch (error) {
     answer.value =
       answer.value ||
@@ -269,14 +296,16 @@ function diagnoseTraining(): void {
         <span class="dv-badge dv-badge--neutral">第二大阶段</span>
 
         <nav class="ml-4 hidden items-center gap-1 lg:flex">
-          <span
+          <button
             v-for="item in NAV_ITEMS"
-            :key="item"
-            class="cursor-not-allowed rounded-sm px-2 py-1 text-[11px] text-muted"
-            :title="`${item}（后续批次实现）`"
+            :key="item.label"
+            type="button"
+            class="rounded-sm px-2 py-1 text-[11px] text-muted transition-colors duration-fast hover:text-primary"
+            :title="`打开「${item.label}」`"
+            @click="openInspector(item.tab)"
           >
-            {{ item }}
-          </span>
+            {{ item.label }}
+          </button>
         </nav>
       </div>
 
@@ -515,6 +544,7 @@ function diagnoseTraining(): void {
             :layers="layers"
             :activation="activation"
             :reset-token="resetToken"
+            :highlight="saliency"
           />
           <p
             class="pointer-events-none absolute right-3 top-3 text-[10px] text-muted"
@@ -556,10 +586,11 @@ function diagnoseTraining(): void {
             <label class="mb-1 block text-[11px] text-secondary">模型引擎</label>
             <select v-model="engine" class="dv-select h-9 text-xs">
               <option value="auto">自动（有 Key 走大模型）</option>
+              <option value="llm">强制大模型</option>
               <option value="offline">离线规则</option>
             </select>
             <p class="mt-1 text-[10px] text-muted">
-              当前由后端配置决定；未配置 Key 时自动使用内置知识库。
+              「强制大模型」在未配置 Key 时会提示并降级为内置知识库。
             </p>
           </div>
 
@@ -613,9 +644,11 @@ function diagnoseTraining(): void {
             <p class="text-[10px] text-muted">
               来源：offline（未配置大模型 Key） · {{ answerMs }} ms
             </p>
-            <p class="mt-1.5 whitespace-pre-wrap text-[11px] leading-relaxed text-secondary">
-              {{ answer }}<span v-if="asking">▌</span>
-            </p>
+            <div
+              class="markdown mt-1.5 text-[11px] leading-relaxed text-secondary"
+              v-html="renderedAnswer"
+            />
+            <span v-if="asking" class="text-[11px] text-secondary">▌</span>
             <div v-if="sources.length > 0" class="mt-2 border-t pt-1.5"
                  :style="{ borderColor: 'var(--border-subtle)' }">
               <p class="text-[10px] text-muted">参考来源</p>
@@ -661,5 +694,60 @@ function diagnoseTraining(): void {
         </div>
       </aside>
     </div>
+
+    <LabInspector
+      :open="inspectorOpen"
+      :task-id="taskId"
+      :layers="layers"
+      :initial-tab="inspectorTab"
+      @saliency="saliency = $event"
+      @close="inspectorOpen = false"
+    />
   </div>
 </template>
+
+<style scoped>
+.markdown :deep(h1),
+.markdown :deep(h2),
+.markdown :deep(h3) {
+  margin: 0.6em 0 0.3em;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown :deep(p) {
+  margin: 0.4em 0;
+}
+
+.markdown :deep(ul),
+.markdown :deep(ol) {
+  margin: 0.4em 0;
+  padding-left: 1.2em;
+  list-style: disc;
+}
+
+.markdown :deep(code) {
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  padding: 0 0.3em;
+  font-family: ui-monospace, monospace;
+}
+
+.markdown :deep(pre) {
+  margin: 0.5em 0;
+  overflow-x: auto;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  padding: 0.5em 0.6em;
+}
+
+.markdown :deep(pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown :deep(strong) {
+  color: var(--text-primary);
+}
+</style>

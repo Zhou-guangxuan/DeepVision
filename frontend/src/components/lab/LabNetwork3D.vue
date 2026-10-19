@@ -16,6 +16,8 @@ const props = defineProps<{
   activation: string
   /** 变化时重置相机 */
   resetToken: number
+  /** 输入特征注意力，长度等于输入层神经元数；用于高亮输入层 */
+  highlight?: number[]
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -94,11 +96,22 @@ function rebuild(): void {
       metalness: 0.2,
     })
 
-    for (const node of nodes) {
+    const highlight = props.highlight ?? []
+    const maxHighlight = Math.max(...highlight.map((value) => Math.abs(value)), 1e-9)
+
+    nodes.forEach((node, nodeIndex) => {
       const mesh = new THREE.Mesh(geometry.clone(), material.clone())
       mesh.position.copy(node)
+
+      // 「注意力 3D」：输入层节点按特征贡献提升自发光
+      if (layerIndex === 0 && highlight.length > nodeIndex) {
+        const ratio = Math.min(Math.abs(highlight[nodeIndex]) / maxHighlight, 1)
+        mesh.material.emissiveIntensity = 0.55 + ratio * 1.6
+        mesh.scale.setScalar(1 + ratio * 0.35)
+      }
+
       contentGroup?.add(mesh)
-    }
+    })
 
     labelAnchors.push(
       new THREE.Vector3(x, (maxSpread / 2) * SPACING_Y + 46, 0),
@@ -234,7 +247,7 @@ onMounted(() => {
 })
 
 watch(
-  () => [props.layers, props.activation],
+  () => [props.layers, props.activation, props.highlight],
   () => rebuild(),
   { deep: true },
 )
