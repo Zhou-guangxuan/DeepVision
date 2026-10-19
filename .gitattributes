@@ -1,0 +1,25 @@
+# 统一行尾，避免 Windows/macOS 协作时全文件改动
+* text=auto eol=lf
+
+# 显式声明语言，便于 GitHub 统计与 diff
+*.py    text diff=python
+*.ts    text diff=typescript
+*.vue   text diff=html
+*.md    text diff=markdown
+*.json  text
+*.yml   text
+*.yaml  text
+
+# 二进制文件不做行尾转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.db    binary
+*.pt    binary
+*.woff  binary
+*.woff2 binary
+
+# 锁文件在 diff 中折叠
+package-lock.json linguist-generated=true
