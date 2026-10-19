@@ -80,6 +80,8 @@ const answer = ref('')
 const sources = ref<string[]>([])
 const asking = ref(false)
 const answerMs = ref(0)
+const answerMode = ref<'llm' | 'fallback' | ''>('')
+const answerNote = ref('')
 const engine = ref<'auto' | 'llm' | 'offline'>('auto')
 const inspectorOpen = ref(false)
 const inspectorTab = ref<'propagation' | 'attention' | 'projection'>('propagation')
@@ -241,6 +243,8 @@ async function ask(text?: string): Promise<void> {
   question.value = content
   answer.value = ''
   sources.value = []
+  answerMode.value = ''
+  answerNote.value = ''
   asking.value = true
   const started = performance.now()
 
@@ -248,6 +252,10 @@ async function ask(text?: string): Promise<void> {
     await streamChat(
       content,
       (event) => {
+        if (event.type === 'meta') {
+          answerMode.value = event.mode === 'llm' ? 'llm' : 'fallback'
+          if (event.reason) answerNote.value = String(event.reason)
+        }
         if (event.type === 'delta' && event.text) answer.value += event.text
         if (event.type === 'done') sources.value = event.sources ?? []
       },
@@ -642,7 +650,9 @@ function diagnoseTraining(): void {
             :style="{ borderColor: 'var(--border-subtle)' }"
           >
             <p class="text-[10px] text-muted">
-              来源：offline（未配置大模型 Key） · {{ answerMs }} ms
+              来源：{{ answerMode === 'llm' ? '大模型' : '内置知识库' }} ·
+              {{ answerMs }} ms
+              <span v-if="answerNote"> · {{ answerNote }}</span>
             </p>
             <div
               class="markdown mt-1.5 text-[11px] leading-relaxed text-secondary"
