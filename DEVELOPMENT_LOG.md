@@ -935,3 +935,39 @@ certificate verify failed: self-signed certificate in certificate chain
 
 - 该 Key 曾在对话中出现，建议在 DeepSeek 控制台轮换。
 - `.env` 已被 `.gitignore` 忽略；`.env.example` 只放占位符。
+
+---
+
+## 2026-10-19 · 按提交要求规范化项目
+
+**类型**：工程规范
+**对应提交**：
+- `chore: 添加编辑器与行尾规范配置`
+- `style(backend): 引入 ruff 并统一代码格式`
+- `style(frontend): 引入 prettier 并统一代码格式`
+- `docs: README 补齐系统架构、环境配置、开发规范与团队信息`
+
+### 对照评审要求
+
+| 要求项 | 处理 |
+| --- | --- |
+| 托管平台 | GitHub 公开仓库（`Zhou-guangxuan/DeepVision`），无需改动 |
+| 代码规范 | 后端引入 ruff（E / F / I / UP / B / SIM）+ `ruff format`；前端引入 Prettier；新增 `.editorconfig`、`.gitattributes` 统一缩进与行尾 |
+| README | 补「系统架构」（含三条数据流）、「环境配置」（后端 16 个变量 / 前端变量表 / 依赖清单）、「开发规范」（风格、命令、提交信息、分支）、「团队信息」、「相关文档」；项目结构树更新 |
+| Git 记录 | 保持按功能与对话拆分，不压缩提交 |
+| 环境配置 | `.env.example` 覆盖全部变量；`requirements.txt` 补 `numpy`；明确 Python / Node 版本与 `npm ci` 可复现安装 |
+
+### 规范执行结果
+
+| 检查 | 结果 |
+| --- | --- |
+| `ruff check app tests` | All checks passed（修复 26 处：导入排序、pyupgrade、未使用变量、`zip(strict=)` 等） |
+| `ruff format app tests` | 25 个文件重排，58 个文件已符合格式 |
+| `npx prettier --check src` | All matched files use Prettier code style |
+| 后端测试 | **84 passed** |
+| 前端构建 | 通过 |
+
+### 说明
+
+- 格式化提交与功能提交分开，便于评审时区分「行为变更」与「纯格式调整」。
+- `.gitattributes` 统一 LF，避免 Windows/macOS 协作时整文件 diff。

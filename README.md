@@ -15,41 +15,71 @@
 | 认证 | JWT（PyJWT）+ argon2id 密码哈希 |
 | 数据库 | SQLite（开发）/ PostgreSQL（生产） |
 
+## 系统架构
+
+```
+浏览器（Vue 3 SPA）
+   │  REST  /api/*          WebSocket  /ws/train/*  ·  /ws/lab/*
+   ▼
+FastAPI（uvicorn）
+   ├── 认证      JWT + argon2id
+   ├── 业务      拓扑校验 · 数据集预处理 · 训练调度 · AI 助教
+   ├── 训练      后台线程 + PyTorch；事件经 asyncio.Queue 广播给 WebSocket
+   └── 持久化    SQLAlchemy → SQLite / PostgreSQL；模型与数据集 → storage/
+```
+
+三条关键数据流：
+
+1. **训练流**：前端 `POST /api/train` 建任务 → 建立 WebSocket → 后端训练线程逐 epoch 推送指标 → 结束写入 `training_records` 与 `.pt` 权重。
+2. **可视化流**：epoch 事件携带逐层 `layer_stats`（权重 / 梯度 / 激活）→ 前端 2D 画布与 3D 视图按当前视图模式渲染。
+3. **助教流**：前端 `POST /api/ai/chat`（SSE）→ 后端优先走 OpenAI 兼容大模型，失败或无 Key 时降级到内置知识库。
+
 ## 项目结构
 
 ```
 DeepVision/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # 路由：auth、records、graph
-│   │   ├── core/            # 配置、安全（argon2 + JWT）、当前用户依赖
-│   │   ├── db/              # 引擎、会话、声明式基类
-│   │   ├── models/          # User / Dataset / TrainingRecord
-│   │   ├── schemas/         # Pydantic 请求与响应模型
-│   │   └── main.py          # 应用入口
-│   ├── alembic/             # 数据库迁移
-│   ├── tests/               # 接口测试
-│   ├── alembic.ini
-│   └── requirements.txt
+│   │   ├── api/
+│   │   │   ├── v1/            # auth / records / graph / datasets / train / ai / lab
+│   │   │   ├── realtime.py    # WS /ws/train/{task_id}
+│   │   │   ├── lab_ws.py      # WS /ws/lab/{task_id}
+│   │   │   └── errors.py      # 统一错误体 {code, message, detail}
+│   │   ├── core/              # 配置、安全（argon2 + JWT）、当前用户依赖
+│   │   ├── db/                # 引擎、会话、声明式基类
+│   │   ├── models/            # User / Dataset / TrainingRecord
+│   │   ├── schemas/           # Pydantic 请求与响应模型
+│   │   ├── services/          # 拓扑校验、DAG、预处理、训练、AI、实验室
+│   │   └── main.py            # 应用入口
+│   ├── alembic/               # 数据库迁移（versions/ 下按时间排列）
+│   ├── scripts/               # 种子账号等运维脚本
+│   ├── tests/                 # pytest 接口与 WebSocket 测试（84 用例）
+│   ├── pyproject.toml         # ruff 规则与格式配置
+│   ├── requirements.txt       # 后端依赖清单
+│   └── .env.example           # 环境变量模板
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # Axios 封装：auth、records、graph、datasets、train、ai
+│   │   ├── api/               # Axios 封装：auth / records / graph / datasets / train / ai / lab
 │   │   ├── components/
-│   │   │   ├── ai/          # AI 助教抽屉
-│   │   │   ├── canvas/      # 画布、节点、节点库、属性面板、小地图、工具栏
-│   │   │   ├── train/       # 训练启动对话框、拓扑流光
-│   │   │   └── ui/          # Button / Input / Card / Toast / Skeleton
-│   │   ├── composables/     # 画布视口、登录页装饰动画
-│   │   ├── router/          # 路由与登录守卫
-│   │   ├── stores/          # Pinia：auth、toast、graph
-│   │   ├── styles/          # 设计 token 与组件样式
-│   │   ├── types/           # 拓扑类型与 model_config 契约
-│   │   ├── utils/           # 自研 CSV 解析与列类型推断
-│   │   └── views/           # LoginView / WorkspaceView / DataView / TrainView
-│   ├── package.json
-│   └── vite.config.ts
-├── 设计文档.md
-├── DEVELOPMENT_LOG.md
+│   │   │   ├── ai/            # AI 助教抽屉
+│   │   │   ├── canvas/        # 画布、节点、节点库、属性面板、小地图、工具栏
+│   │   │   ├── train/         # 训练启动对话框、拓扑流光
+│   │   │   ├── threed/        # 工作台 3D 只读拓扑
+│   │   │   ├── lab/           # 教学实验室：3D 网络、仪表盘、观察弹窗
+│   │   │   └── ui/            # Button / Input / Card / Toast / Skeleton
+│   │   ├── composables/       # 视口、训练 WebSocket、实验室 WebSocket
+│   │   ├── router/            # 路由与登录守卫
+│   │   ├── stores/            # Pinia：auth、toast、graph
+│   │   ├── styles/            # 设计 token 与组件样式
+│   │   ├── types/             # 拓扑类型与 model_config 契约
+│   │   ├── utils/             # 自研 CSV 解析与列类型推断
+│   │   └── views/             # Login / Workspace / Data / Train / Lab
+│   ├── package.json           # 前端依赖与脚本
+│   ├── .prettierrc.json       # 前端格式化配置
+│   └── vite.config.ts         # 开发代理：/api、/ws → 127.0.0.1:8000
+├── samples/                   # 示例数据集（验证用）
+├── 设计文档.md                 # 三大阶段的设计与验收标准
+├── DEVELOPMENT_LOG.md         # 按对话记录的开发日志
 └── README.md
 ```
 
@@ -104,6 +134,42 @@ cd backend
 脚本可重复执行（账号已存在则重置密码），密码始终以 argon2id 哈希入库、不存明文。
 
 > 弱口令仅用于本地开发。本仓库为公开仓库，部署到公网前请删除该账号或更换密码。
+
+## 环境配置
+
+### 后端 `backend/.env`
+
+复制模板：`copy .env.example .env`（macOS/Linux 用 `cp`）。全部可用变量：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `APP_NAME` | `DeepVision API` | 应用名 |
+| `DEBUG` | `false` | 调试模式 |
+| `SECRET_KEY` | `dev-secret-change-me-in-production` | JWT 签名密钥，**生产必须更换** |
+| `ALGORITHM` | `HS256` | JWT 算法 |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `120` | Token 有效期 |
+| `DATABASE_URL` | `sqlite:///./deepvision.db` | 相对路径基于工作目录，**须在 `backend` 下启动** |
+| `CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173"]` | 允许的前端来源（JSON 数组） |
+| `STORAGE_DIR` | `./storage` | 数据集与模型权重目录 |
+| `MAX_UPLOAD_BYTES` | `52428800` | 单次上传上限（50MB） |
+| `LLM_PROVIDER` | `none` | `none` / `openai`（任意 OpenAI 兼容服务） |
+| `LLM_API_KEY` | 空 | 留空即走内置知识库 |
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | 需带版本路径 |
+| `LLM_MODEL` | `gpt-4o-mini` | 模型名 |
+| `LLM_TIMEOUT_SECONDS` | `30` | 单次请求超时 |
+| `LLM_VERIFY_SSL` | `true` | 用系统证书库校验 TLS |
+| `AI_RATE_LIMIT_PER_MINUTE` | `20` | 每用户每分钟问答上限 |
+
+### 前端 `frontend/.env.local`（可选）
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | 空 | 留空走 Vite 代理（`/api`、`/ws` → 127.0.0.1:8000）；前后端分离部署时填完整地址 |
+
+### 依赖清单
+
+- 后端：[`backend/requirements.txt`](backend/requirements.txt)（Python 3.12+；PyTorch 安装 CPU 版即可）
+- 前端：[`frontend/package.json`](frontend/package.json) + `package-lock.json`（Node 18+，`npm ci` 可复现安装）
 
 ## AI 助教接入大模型（可选）
 
@@ -244,6 +310,60 @@ cd backend
 | 第一大阶段 | 用户训练自己的数据（认证 / 画布 / 数据集 / 训练 / AI 助教） | `/workspace`、`/data`、`/train/:id` |
 | 第二大阶段 | 3D 观察结构与逐层指标 | `/workspace` 内切换 3D |
 | 第三大阶段 | 教学实验室：滑块调参 + 实时可视化 | `/lab` |
+
+## 开发规范
+
+### 代码风格
+
+| 端 | 规范 |
+| --- | --- |
+| 后端 | ruff（规则 E / F / I / UP / B / SIM），行宽 88，`ruff format` 统一格式；函数带类型注解，模块与关键函数用中文 docstring 说明意图与边界 |
+| 前端 | TypeScript + `<script setup>`，Prettier（无分号、单引号、行宽 80）；组件 PascalCase，工具函数 camelCase |
+| 通用 | UTF-8 / LF（见 `.gitattributes`、`.editorconfig`） |
+
+### 常用命令
+
+```bash
+# 后端
+cd backend
+.venv\Scripts\python.exe -m ruff check app tests
+.venv\Scripts\python.exe -m ruff format app tests
+.venv\Scripts\python.exe -m pytest -q
+
+# 前端
+cd frontend
+npm run typecheck
+npm run format
+npm run build
+```
+
+### 提交信息
+
+`<type>(<scope>): <subject>`，`type` 取 `feat` / `fix` / `docs` / `refactor` / `test` / `chore` / `style`。
+
+一次提交只做一件事，按「对话 / 功能模块」拆分，禁止把多个功能压成一次提交。
+
+### 分支与合并
+
+- `main` 始终保持可运行；
+- 新功能用 `feature/<简述>`，修复用 `fix/<简述>`；
+- 合并前必须通过后端 `pytest` 与前端 `npm run build`。
+
+## 团队信息
+
+| 角色 | 成员 | 负责内容 |
+| --- | --- | --- |
+| 项目负责人 / 全栈开发 | 小广漩 | 需求与设计、后端 API 与训练引擎、前端画布与 3D、文档与部署 |
+| 代码仓库 | Zhou-guangxuan | https://github.com/Zhou-guangxuan/DeepVision |
+
+> 如有其他成员，请按「角色 / 成员 / 负责模块」三列在此表追加。
+
+## 相关文档
+
+- [设计文档.md](./设计文档.md)：三大阶段的架构、页面规格、数据模型、接口契约与验收标准
+- [设计文档第二版.md](./设计文档第二版.md)：第三大阶段（教学实验室）的需求原文，保留用于追溯
+- [DEVELOPMENT_LOG.md](./DEVELOPMENT_LOG.md)：按对话记录的开发过程与决策
+- 运行后可在 `http://127.0.0.1:8000/docs` 查看 Swagger 接口文档
 
 ## 后续可选
 
