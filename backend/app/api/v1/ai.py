@@ -45,7 +45,7 @@ async def chat(
         raise APIError(400, "INPUT_REJECTED", reason)
 
     async def generate():
-        async for event in llm.stream_answer(payload.message):
+        async for event in llm.stream_answer(payload.message, payload.mode):
             if event.get("type") == "delta":
                 event["text"] = sanitize_output(str(event.get("text", "")))
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

@@ -85,6 +85,7 @@ def train_env(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "app.services.training.SessionLocal", TestingSessionLocal
     )
+    monkeypatch.setattr("app.services.lab.SessionLocal", TestingSessionLocal)
     monkeypatch.setattr("app.api.realtime.SessionLocal", TestingSessionLocal)
     monkeypatch.setattr(
         "app.services.training.get_settings", lambda: settings

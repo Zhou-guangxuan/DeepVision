@@ -25,6 +25,7 @@ class RecordCreate(BaseModel):
     dataset_id: int | None = None
     model_file_url: str | None = Field(default=None, max_length=512)
     status: RecordStatus = "pending"
+    source: Literal["platform", "lab"] = "platform"
 
 
 class RecordResponse(BaseModel):
@@ -42,6 +43,7 @@ class RecordResponse(BaseModel):
     result_metrics: dict
     model_file_url: str | None
     status: RecordStatus
+    source: str = "platform"
     created_at: datetime
 
 

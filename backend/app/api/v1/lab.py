@@ -1,6 +1,6 @@
 """教学实验室接口：创建训练任务与暂停 / 恢复 / 停止。"""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.api.errors import APIError
 from app.core.deps import get_current_user
@@ -86,3 +86,44 @@ def stop_training(
     lab.stop(task)
     lab.emit(task, {"type": "stopping"})
     return LabControlResponse(task_id=task_id, status="stopping")
+
+
+def _ready_task(task_id: str, user: User):
+    task = _owned_task(task_id, user)
+    if task.model is None:
+        raise APIError(
+            status.HTTP_409_CONFLICT,
+            "LAB_NOT_READY",
+            "训练开始后才能查看传播过程",
+        )
+    return task
+
+
+@router.get("/{task_id}/inspect", summary="前向 / 反向传播与特征注意力")
+def inspect_task(
+    task_id: str,
+    index: int = Query(default=0, ge=0, description="样本序号"),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = _ready_task(task_id, current_user)
+    try:
+        return lab.inspect(task, index)
+    except ValueError as exc:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST, "LAB_INSPECT_FAILED", str(exc)
+        ) from exc
+
+
+@router.get("/{task_id}/projection", summary="指定层的 PCA 降维投影")
+def project_task(
+    task_id: str,
+    layer: int = Query(default=0, ge=0, description="第几个 Linear 层"),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = _ready_task(task_id, current_user)
+    try:
+        return lab.project(task, layer)
+    except ValueError as exc:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST, "LAB_PROJECTION_FAILED", str(exc)
+        ) from exc

@@ -52,6 +52,10 @@ class TrainingRecord(Base):
     status: Mapped[str] = mapped_column(
         String(16), index=True, nullable=False, default=STATUS_PENDING
     )
+    # 记录来源：platform（第一阶段工作台） / lab（第三阶段教学实验室）
+    source: Mapped[str] = mapped_column(
+        String(16), index=True, nullable=False, default="platform"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False, index=True
     )

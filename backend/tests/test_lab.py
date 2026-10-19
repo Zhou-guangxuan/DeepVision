@@ -31,7 +31,7 @@ def test_lab_start_computes_parameter_count(
 
 
 def test_lab_streams_epochs_and_visuals(
-    client: TestClient, auth_headers: dict[str, str]
+    client: TestClient, auth_headers: dict[str, str], train_env
 ) -> None:
     started = client.post(
         "/api/lab/train",
@@ -76,7 +76,7 @@ def test_lab_streams_epochs_and_visuals(
 
 
 def test_lab_pause_and_stop(
-    client: TestClient, auth_headers: dict[str, str]
+    client: TestClient, auth_headers: dict[str, str], train_env
 ) -> None:
     started = client.post(
         "/api/lab/train",
@@ -110,3 +110,73 @@ def test_lab_pause_and_stop(
 
     assert terminal is not None
     assert terminal["type"] in {"stopped", "completed"}
+
+
+def _train(client: TestClient, headers: dict[str, str], epochs: int = 2) -> str:
+    started = client.post(
+        "/api/lab/train",
+        json={
+            "config": {
+                "hidden_layers": [6, 6],
+                "epochs": epochs,
+                "batch_size": 64,
+            }
+        },
+        headers=headers,
+    )
+    task_id = started.json()["task_id"]
+    with client.websocket_connect(
+        f"/ws/lab/{task_id}?token={_token(headers)}"
+    ) as ws:
+        while True:
+            event = ws.receive_json()
+            if event["type"] in {"completed", "failed", "stopped"}:
+                return task_id
+
+
+def test_lab_inspect_attention_and_projection(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    task_id = _train(client, auth_headers)
+
+    inspect = client.get(
+        f"/api/lab/{task_id}/inspect?index=0", headers=auth_headers
+    )
+    assert inspect.status_code == 200, inspect.text
+    body = inspect.json()
+    # [2, 6, 6, 2]：两个隐藏层 + 一个输出层
+    assert len(body["layers"]) == 3
+    assert len(body["layers"][0]["activation"]) == 6
+    assert len(body["layers"][0]["gradient"]) == 6
+    # 输入 2 维 → 2 个注意力（梯度）值
+    assert len(body["saliency"]) == 2
+    assert len(body["input"]) == 2
+
+    projection = client.get(
+        f"/api/lab/{task_id}/projection?layer=0", headers=auth_headers
+    )
+    assert projection.status_code == 200, projection.text
+    data = projection.json()
+    assert data["points"]
+    assert len(data["explained"]) == 2
+    assert data["layer_count"] == 3
+
+    # 训练记录落库，来源标记为 lab
+    records = client.get("/api/records", headers=auth_headers).json()
+    assert records["total"] == 1
+    assert records["items"][0]["source"] == "lab"
+
+
+def test_lab_inspect_requires_training(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    started = client.post(
+        "/api/lab/train",
+        json={"config": {"hidden_layers": [4], "epochs": 1}},
+        headers=auth_headers,
+    )
+    task_id = started.json()["task_id"]
+
+    resp = client.get(f"/api/lab/{task_id}/inspect", headers=auth_headers)
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "LAB_NOT_READY"

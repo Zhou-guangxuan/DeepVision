@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
+    # auto：有 Key 走大模型；llm：强制大模型（失败降级）；offline：强制内置知识库
+    mode: Literal["auto", "llm", "offline"] = "auto"
 
 
 class DiagnoseRequest(BaseModel):

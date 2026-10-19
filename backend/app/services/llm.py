@@ -45,9 +45,30 @@ def _split(text: str, size: int = CHUNK_SIZE) -> list[str]:
     return [text[index : index + size] for index in range(0, len(text), size)]
 
 
-async def stream_answer(question: str) -> AsyncIterator[dict]:
-    """产出事件流：meta → delta* → done。"""
-    mode = "llm" if is_llm_enabled() else "fallback"
+async def stream_answer(
+    question: str, mode_preference: str = "auto"
+) -> AsyncIterator[dict]:
+    """产出事件流：meta → delta* → done。
+
+    mode_preference：
+    - auto：有 Key 走大模型，否则内置知识库；
+    - offline：强制内置知识库；
+    - llm：强制大模型（未配置或调用失败时仍降级，并说明原因）。
+    """
+    use_llm = is_llm_enabled() and mode_preference != "offline"
+    if mode_preference == "llm" and not is_llm_enabled():
+        yield {
+            "type": "meta",
+            "mode": "fallback",
+            "reason": "未配置大模型 Key，无法使用大模型引擎",
+        }
+        answer, sources = _fallback_answer(question)
+        for piece in _split(answer):
+            yield {"type": "delta", "text": sanitize_output(piece)}
+        yield {"type": "done", "sources": sources}
+        return
+
+    mode = "llm" if use_llm else "fallback"
     yield {"type": "meta", "mode": mode}
 
     if mode == "llm":

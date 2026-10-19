@@ -17,6 +17,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from app.db.session import SessionLocal
+
 ACTIVATIONS = {
     "relu": nn.ReLU,
     "tanh": nn.Tanh,
@@ -46,6 +48,11 @@ class LabTask:
     stop_event: threading.Event = field(default_factory=threading.Event)
     pause_event: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
+    # 训练结束后保留模型与数据，供「前向/反向传播」「注意力」「降维投影」使用
+    model: nn.Module | None = None
+    features: np.ndarray | None = None
+    labels: np.ndarray | None = None
+    record_id: int | None = None
 
 
 def create_task(*, user_id: int, config: dict) -> LabTask:
@@ -329,6 +336,13 @@ def _run(task: LabTask) -> None:
                 emit(task, _weight_histogram(model))
                 emit(task, _decision_boundary(model, features, labels))
 
+        # 训练结束（含中止）都保留模型与数据，供传播演示 / 降维投影使用
+        model.eval()
+        task.model = model
+        task.features = features
+        task.labels = labels
+        _save_record(task, epochs=len(task.history), stopped=task.stop_event.is_set())
+
         if task.stop_event.is_set():
             task.status = "stopped"
             emit(task, {"type": "stopped", "epoch": len(task.history)})
@@ -339,3 +353,189 @@ def _run(task: LabTask) -> None:
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
         emit(task, {"type": "failed", "reason": str(exc)})
+
+
+def _save_record(task: LabTask, epochs: int, stopped: bool = False) -> None:
+    """把实验室训练结果写入 training_records（source = lab）。失败不影响训练结果。"""
+    from app.models.record import STATUS_INTERRUPTED, STATUS_SUCCESS, TrainingRecord
+
+    last = task.history[-1] if task.history else {}
+    metrics = {
+        "epochs": epochs,
+        "final_loss": last.get("val_loss"),
+        "final_accuracy": last.get("accuracy"),
+        "grad_norm": last.get("grad_norm"),
+        "history": task.history[-200:],
+        "dataset": "spiral",
+    }
+
+    session = SessionLocal()
+    try:
+        record = TrainingRecord(
+            user_id=task.user_id,
+            dataset_id=None,
+            task_id=task.task_id,
+            network_config={
+                "source": "lab",
+                "hidden_layers": task.config.get("hidden_layers"),
+                "activation": task.config.get("activation"),
+                "init": task.config.get("init"),
+            },
+            hyperparameters={
+                key: task.config.get(key)
+                for key in (
+                    "optimizer",
+                    "learning_rate",
+                    "batch_size",
+                    "epochs",
+                    "l2",
+                    "dropout",
+                )
+            },
+            result_metrics=metrics,
+            status=STATUS_INTERRUPTED if stopped else STATUS_SUCCESS,
+            source="lab",
+        )
+        session.add(record)
+        session.commit()
+        task.record_id = record.id
+    except Exception:  # noqa: BLE001
+        session.rollback()
+    finally:
+        session.close()
+
+
+def inspect(task: LabTask, index: int) -> dict:
+    """取一条样本做一次前向 + 反向，返回逐层激活与梯度，以及输入注意力。"""
+    if task.model is None or task.features is None or task.labels is None:
+        raise ValueError("训练尚未开始，无法查看传播过程")
+
+    total = int(len(task.features))
+    if not 0 <= index < total:
+        raise ValueError(f"样本序号需在 0 到 {total - 1} 之间")
+
+    model = task.model
+    model.eval()
+    model.zero_grad(set_to_none=True)
+
+    x = (
+        torch.from_numpy(task.features[index : index + 1])
+        .clone()
+        .requires_grad_(True)
+    )
+    target = int(task.labels[index])
+
+    captions: list[str] = []
+    tensors: list[torch.Tensor] = []
+
+    hidden = x
+    for module in model:
+        hidden = module(hidden)
+        if isinstance(module, nn.Linear):
+            hidden.retain_grad()
+            tensors.append(hidden)
+
+    logits = hidden
+    loss = nn.CrossEntropyLoss()(logits, torch.tensor([target]))
+    loss.backward()
+
+    layers = []
+    for order, tensor in enumerate(tensors):
+        gradient = tensor.grad
+        size = int(tensor.shape[1])
+        layers.append(
+            {
+                "index": order,
+                "size": size,
+                "activation": [
+                    round(float(value), 5)
+                    for value in tensor.detach().flatten().tolist()
+                ],
+                "gradient": [
+                    round(float(value), 5)
+                    for value in (
+                        gradient.detach().flatten().tolist()
+                        if gradient is not None
+                        else [0.0] * size
+                    )
+                ],
+            }
+        )
+
+    # 注意力：输入梯度的绝对值 × 输入值，衡量该特征对本次预测的贡献
+    input_vector = task.features[index]
+    if x.grad is not None:
+        grad_vector = x.grad.detach().flatten().numpy()
+    else:
+        grad_vector = np.zeros_like(input_vector)
+    saliency = np.abs(grad_vector * input_vector)
+
+    probabilities = torch.softmax(logits.detach(), dim=1).flatten().tolist()
+    result = {
+        "sample_index": index,
+        "total_samples": total,
+        "true_label": target,
+        "prediction": int(logits.detach().argmax(dim=1).item()),
+        "probabilities": [round(float(value), 5) for value in probabilities],
+        "input": [round(float(value), 5) for value in input_vector],
+        "saliency": [round(float(value), 5) for value in saliency],
+        "layers": layers,
+        "loss": round(float(loss.item()), 6),
+    }
+
+    model.zero_grad(set_to_none=True)
+    return result
+
+
+def project(task: LabTask, layer_index: int, max_points: int = 600) -> dict:
+    """对指定隐藏层的输出做 PCA，降到二维用于散点展示。"""
+    if task.model is None or task.features is None or task.labels is None:
+        raise ValueError("训练尚未开始，无法做降维投影")
+
+    model = task.model
+    model.eval()
+
+    features = task.features[:max_points]
+    labels = task.labels[:max_points]
+
+    with torch.no_grad():
+        hidden = torch.from_numpy(features)
+        cursor = 0
+        found = False
+        for module in model:
+            hidden = module(hidden)
+            if isinstance(module, nn.Linear):
+                if cursor == layer_index:
+                    found = True
+                    break
+                cursor += 1
+
+    if not found:
+        raise ValueError("层序号超出范围")
+
+    matrix = hidden.detach().numpy().astype("float64")
+    centered = matrix - matrix.mean(axis=0, keepdims=True)
+    left, singular, _ = np.linalg.svd(centered, full_matrices=False)
+    coords = left[:, :2] * singular[:2]
+
+    scale = float(np.abs(coords).max()) or 1.0
+    coords = coords / scale
+
+    variance = singular**2
+    total = float(variance.sum()) or 1.0
+
+    return {
+        "layer_index": layer_index,
+        "layer_count": sum(
+            1 for module in model if isinstance(module, nn.Linear)
+        ),
+        "explained": [round(float(value / total), 4) for value in variance[:2]],
+        "points": [
+            {
+                "x": round(float(point[0]), 4),
+                "y": round(float(point[1]), 4),
+                "label": int(label),
+            }
+            for point, label in zip(coords, labels)
+        ],
+    }
