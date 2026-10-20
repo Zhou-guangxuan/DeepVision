@@ -145,14 +145,10 @@ def build_dataset(
         for index in range(num_classes):
             angle = 2 * np.pi * index / num_classes
             center = np.array([np.cos(angle), np.sin(angle)]) * 0.65
-            arms.append(
-                center + rng.normal(0, 0.16, size=(per_class, 2))
-            )
+            arms.append(center + rng.normal(0, 0.16, size=(per_class, 2)))
         base = np.vstack(arms)
 
-    labels = np.repeat(
-        np.arange(num_classes, dtype=np.int64), per_class
-    )
+    labels = np.repeat(np.arange(num_classes, dtype=np.int64), per_class)
 
     # 前两维缩放到约 [-1, 1]
     scale = float(np.abs(base).max()) or 1.0
