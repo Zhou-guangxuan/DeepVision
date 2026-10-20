@@ -1115,3 +1115,31 @@ certificate verify failed: self-signed certificate in certificate chain
 
 - 前端构建通过（`vue-tsc --noEmit && vite build`）
 - 仅前端改动，无接口与数据变化
+
+---
+
+## 2026-10-20 · 仪表盘图表排版优化
+
+**类型**：界面优化
+**对应提交**：`style(lab): 重排仪表盘曲线与直方图，消除文字重叠`
+
+### 问题
+
+损失曲线图里 `yAxis.name`（loss / acc）与图例挤在同一行、x 轴刻度标签过密、图形贴边，观感拥挤。
+
+### 调整
+
+| 项 | 调整 |
+| --- | --- |
+| 轴名 | 去掉 `yAxis.name`，量纲改为由图例说明，避免与图例抢位 |
+| 布局 | `grid.top` 28 → **40**（给图例留空间）、`right` 46、`bottom` 28，`containLabel` 保持关闭并配合手工边距 |
+| 图例 | 固定 `top: 4 / left: 6`，`itemWidth 10 / itemHeight 8`，圆角图标，字号 10 |
+| x 轴 | 关闭刻度线，`hideOverlap: true`，字号 9，自动抽稀标签 |
+| y 轴 | 关闭轴线，左轴 `min: 0`（避免曲线被裁切），右轴 0–1 |
+| 曲线 | 线宽 1.6；准确率改为**虚线**，与两条 loss 曲线区分 |
+| 直方图 | 底部留白 46、标签 45° 且自动隐藏重叠、柱顶 2px 圆角 |
+
+### 验证
+
+- 前端构建通过
+- 未做浏览器截图对比（本次仅调整 ECharts 配置，无逻辑变化）
