@@ -312,7 +312,6 @@ function diagnoseTraining(): void {
           L
         </span>
         <span class="text-sm font-semibold text-primary">教学实验室</span>
-        <span class="dv-badge dv-badge--neutral">第二大阶段</span>
 
         <nav class="ml-4 hidden items-center gap-1 lg:flex">
           <button

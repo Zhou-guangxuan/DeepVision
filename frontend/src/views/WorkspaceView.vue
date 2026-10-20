@@ -61,7 +61,6 @@ watch(is3D, (value) => {
     // 忽略写入失败
   }
 })
-const projectName = ref('未命名项目')
 const validating = ref(false)
 
 let saveTimer: number | undefined
@@ -169,24 +168,6 @@ function onTrainingStarted(taskId: string): void {
         background: 'var(--bg-surface)',
       }"
     >
-      <div class="flex min-w-0 items-center gap-3">
-        <span
-          class="grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm font-bold text-[#04070f]"
-          style="background-image: var(--brand-gradient)"
-        >
-          D
-        </span>
-        <input
-          v-model="projectName"
-          class="w-40 bg-transparent text-sm text-secondary outline-none transition-colors duration-fast hover:text-primary focus:text-primary"
-          aria-label="项目名称"
-        />
-        <span class="dv-badge dv-badge--neutral shrink-0">阶段二</span>
-        <span class="hidden text-[11px] text-muted md:inline">
-          {{ graph.savedAt ? '草稿已保存' : '草稿未保存' }}
-        </span>
-      </div>
-
       <!-- 视图模式切换（设计文档第二版 · 模块一） -->
       <div class="flex flex-1 justify-center px-2">
         <div

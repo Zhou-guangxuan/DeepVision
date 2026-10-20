@@ -174,9 +174,7 @@ function onForgot(): void {
 <template>
   <div class="flex min-h-screen w-full overflow-hidden bg-base">
     <!-- 品牌区：宽屏显示 -->
-    <section
-      class="relative hidden w-3/5 flex-col justify-between p-12 lg:flex"
-    >
+    <section class="relative hidden w-3/5 flex-col justify-center p-12 lg:flex">
       <div class="pointer-events-none absolute inset-0">
         <div
           class="absolute -left-32 -top-32 h-[440px] w-[440px] rounded-full blur-[130px]"
@@ -193,16 +191,6 @@ function onForgot(): void {
         class="pointer-events-none absolute inset-0 h-full w-full opacity-60"
         aria-hidden="true"
       />
-
-      <div class="relative z-10 flex items-center gap-2.5">
-        <span
-          class="grid h-8 w-8 place-items-center rounded-md text-sm font-bold text-[#04070f]"
-          style="background-image: var(--brand-gradient)"
-        >
-          D
-        </span>
-        <span class="text-lg font-semibold tracking-tight">DeepVision</span>
-      </div>
 
       <div class="relative z-10 max-w-xl">
         <h1 class="text-3xl font-semibold leading-tight tracking-tight">
@@ -225,8 +213,6 @@ function onForgot(): void {
           </li>
         </ul>
       </div>
-
-      <p class="relative z-10 text-xs text-muted">© 2026 DeepVision</p>
     </section>
 
     <!-- 表单区 -->
