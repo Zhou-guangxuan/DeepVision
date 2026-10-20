@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { ECharts } from 'echarts'
 
@@ -48,6 +48,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 const trendRef = ref<HTMLElement | null>(null)
 const modalRef = ref<HTMLElement | null>(null)
 let trendChart: ECharts | null = null
+let canvasObserver: ResizeObserver | null = null
 
 const layerCount = computed(() => inspect.value?.layers.length ?? 0)
 
@@ -219,12 +220,18 @@ function drawProjection(): void {
 
   const parent = canvas.parentElement
   const width = Math.max(parent?.clientWidth ?? 340, 160)
-  const height = Math.max(parent?.clientHeight ?? 220, 120)
-  canvas.width = width
-  canvas.height = height
+  const height = Math.max(parent?.clientHeight ?? 300, 120)
+
+  // 按设备像素比放大位图，避免高分屏发虚；绘制坐标仍用 CSS 像素
+  const ratio = window.devicePixelRatio || 1
+  canvas.width = Math.round(width * ratio)
+  canvas.height = Math.round(height * ratio)
+  canvas.style.width = `${width}px`
+  canvas.style.height = `${height}px`
 
   const context = canvas.getContext('2d')
   if (!context) return
+  context.setTransform(ratio, 0, 0, ratio, 0, 0)
   context.clearRect(0, 0, width, height)
   if (!data) return
 
@@ -260,11 +267,20 @@ function stepTo(delta: number): void {
 function switchTab(next: Tab): void {
   tab.value = next
   errorMessage.value = ''
-  if (next === 'projection' && projection.value === null) {
-    void loadProjection()
+  if (next === 'projection') {
+    if (projection.value === null) {
+      void loadProjection()
+    } else {
+      // 切走再切回时 canvas 元素被重建，需要重绘
+      void nextTick().then(drawProjection)
+    }
   }
-  if (next === 'trend' && trend.value === null) {
-    void loadAttentionTrend()
+  if (next === 'trend') {
+    if (trend.value === null) {
+      void loadAttentionTrend()
+    } else {
+      void nextTick().then(renderTrend)
+    }
   }
 }
 
@@ -278,7 +294,10 @@ watch(
     }
     if (tab.value === 'projection') {
       if (projection.value === null) void loadProjection()
-      void nextTick().then(drawProjection)
+      void nextTick().then(() => {
+        drawProjection()
+        observeCanvas()
+      })
     }
     if (tab.value === 'trend') {
       if (trend.value === null) void loadAttentionTrend()
@@ -287,8 +306,55 @@ watch(
   },
 )
 
+function handleWindowResize(): void {
+  drawProjection()
+  trendChart?.resize()
+}
+
+/** 画布尺寸跟随容器；容器显隐或缩放都会触发重绘 */
+function observeCanvas(): void {
+  canvasObserver?.disconnect()
+  canvasObserver = null
+
+  const parent = canvasRef.value?.parentElement
+  if (!parent || typeof ResizeObserver === 'undefined') return
+
+  canvasObserver = new ResizeObserver(() => drawProjection())
+  canvasObserver.observe(parent)
+}
+
+// 切到投影页后，等本次渲染完成再重绘（canvas 元素是新建的）
+watch(tab, (value) => {
+  if (value === 'projection') {
+    void nextTick().then(() => {
+      drawProjection()
+      observeCanvas()
+    })
+  }
+  if (value === 'trend') {
+    void nextTick().then(renderTrend)
+  }
+})
+
+// 数据回来后重绘，避免「先画空、后到数据」
+watch(projection, () => {
+  void nextTick().then(drawProjection)
+})
+
+onMounted(() => {
+  window.addEventListener('resize', handleWindowResize)
+  if (tab.value === 'projection') {
+    void nextTick().then(() => {
+      drawProjection()
+      observeCanvas()
+    })
+  }
+})
+
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', drawProjection)
+  window.removeEventListener('resize', handleWindowResize)
+  canvasObserver?.disconnect()
+  canvasObserver = null
   trendChart?.dispose()
   trendChart = null
 })
@@ -626,10 +692,10 @@ onBeforeUnmount(() => {
           </div>
 
           <div
-            class="relative mt-3 h-[280px] w-full overflow-hidden rounded-md border"
-            :style="{ borderColor: 'var(--border-subtle)' }"
+            class="relative mt-3 w-full overflow-hidden rounded-md border"
+            :style="{ borderColor: 'var(--border-subtle)', height: '300px' }"
           >
-            <canvas ref="canvasRef" class="h-full w-full" />
+            <canvas ref="canvasRef" class="block h-full w-full" />
           </div>
           <p class="mt-2 text-[10px] text-muted">
             每个颜色代表一个类别；坐标是该层激活经
