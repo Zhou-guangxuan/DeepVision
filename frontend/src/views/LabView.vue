@@ -581,6 +581,7 @@ function diagnoseTraining(): void {
             :activation="activation"
             :reset-token="resetToken"
             :highlight="saliency"
+            :active="status === 'running'"
           />
           <p
             class="pointer-events-none absolute right-3 top-3 text-[10px] text-muted"
