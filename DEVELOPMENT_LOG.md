@@ -1143,3 +1143,34 @@ certificate verify failed: self-signed certificate in certificate chain
 
 - 前端构建通过
 - 未做浏览器截图对比（本次仅调整 ECharts 配置，无逻辑变化）
+
+---
+
+## 2026-10-20 · 修复降维投影画布空白
+
+**类型**：缺陷修复
+**对应提交**：`fix(lab): 修复降维投影标签页画布空白`
+
+### 现象
+
+打开观察弹窗的「降维投影」标签，解释度（如 99.5% / 0.5%）正常显示，但画布区域完全空白，看不到散点。
+
+### 原因
+
+1. 画布位于 `v-else` 分支，切换标签时会被销毁重建；原实现只在 `loadProjection()` 成功后绘制一次，**切走再切回不会重绘**，重建后的新 canvas 是空白的。
+2. 画布位图尺寸依赖父容器的 `h-[280px]` 与 `h-full`，容器尺寸变化时没有重新计算，容易画到 0 高度或过期尺寸上。
+3. 未处理 `devicePixelRatio`，高分屏下线条发虚。
+
+### 修复
+
+| 项 | 处理 |
+| --- | --- |
+| 重绘时机 | 切到投影页（`watch(tab)`）、数据更新（`watch(projection)`）、重新打开弹窗（`watch(open)`）三处都触发重绘 |
+| 尺寸 | 父容器改用内联 `height: 300px`；画布按父容器实际 `clientWidth/Height` × DPR 设置位图，并显式写回 CSS 宽高 |
+| 自适应 | 新增 `ResizeObserver` 监听容器，窗口 resize 也重绘 |
+| 注意力曲线 | 切回该标签时重新 `renderTrend()`，避免 ECharts 容器重建后空白 |
+
+### 验证
+
+- 前端构建通过（`vue-tsc --noEmit && vite build`）
+- 未做浏览器截图确认（当前环境无浏览器连接），需用户刷新后目视确认
