@@ -119,29 +119,53 @@ def start(task: LabTask) -> None:
     task.thread.start()
 
 
-def build_spiral_dataset(seed: int = 42) -> tuple[np.ndarray, np.ndarray]:
-    """标准双螺旋：两类各 1000 点，旋转 180° 交错。"""
+def build_dataset(
+    input_dim: int = 2, num_classes: int = 2, seed: int = 42
+) -> tuple[np.ndarray, np.ndarray]:
+    """生成教学数据集。
+
+    - 2 类：标准双螺旋（两类各 1000 点，旋转 180° 交错）；
+    - 多类：各类中心均匀分布在一个圆上，便于观察多分类决策边界；
+    - 输入维度 > 2 时，额外维度用噪声填充（不影响前两维的可视化）。
+    """
     rng = np.random.default_rng(seed)
-    per_class = 1000
 
-    theta = np.linspace(0, 4 * np.pi, per_class)
-    radius = theta / (4 * np.pi)
+    input_dim = max(1, min(int(input_dim), 16))
+    num_classes = max(2, min(int(num_classes), 8))
+    per_class = max(80, 2000 // num_classes)
 
-    x0 = np.stack([radius * np.cos(theta), radius * np.sin(theta)], axis=1)
-    x1 = np.stack([-radius * np.cos(theta), -radius * np.sin(theta)], axis=1)
+    if num_classes == 2:
+        theta = np.linspace(0, 4 * np.pi, per_class)
+        radius = theta / (4 * np.pi)
+        base0 = np.stack([radius * np.cos(theta), radius * np.sin(theta)], axis=1)
+        base1 = -base0
+        base = np.vstack([base0, base1]) + rng.normal(0, 0.05, size=(2 * per_class, 2))
+    else:
+        arms: list[np.ndarray] = []
+        for index in range(num_classes):
+            angle = 2 * np.pi * index / num_classes
+            center = np.array([np.cos(angle), np.sin(angle)]) * 0.65
+            arms.append(
+                center + rng.normal(0, 0.16, size=(per_class, 2))
+            )
+        base = np.vstack(arms)
 
-    features = np.vstack([x0, x1]) + rng.normal(0, 0.05, size=(2 * per_class, 2))
-    labels = np.concatenate(
-        [np.zeros(per_class, dtype=np.int64), np.ones(per_class, dtype=np.int64)]
+    labels = np.repeat(
+        np.arange(num_classes, dtype=np.int64), per_class
     )
 
-    order = rng.permutation(len(features))
-    features = features[order]
-    labels = labels[order]
+    # 前两维缩放到约 [-1, 1]
+    scale = float(np.abs(base).max()) or 1.0
+    base = base / scale
 
-    # 缩放到约 [-1, 1]
-    features = features / (np.abs(features).max() + 1e-9)
-    return features.astype("float32"), labels
+    if input_dim <= 2:
+        features = base[:, :input_dim]
+    else:
+        extra = rng.normal(0, 0.35, size=(len(base), input_dim - 2))
+        features = np.hstack([base, extra])
+
+    order = rng.permutation(len(features))
+    return features[order].astype("float32"), labels[order]
 
 
 def _apply_init(model: nn.Module, init: str) -> None:
@@ -163,7 +187,9 @@ def build_model(config: dict) -> nn.Sequential:
     dropout = float(config.get("dropout", 0.0))
 
     layers: list[nn.Module] = []
-    previous = 2
+    input_units = max(1, min(int(config.get("input_units", 2)), 16))
+    output_units = max(2, min(int(config.get("output_units", 2)), 8))
+    previous = input_units
 
     for units in config.get("hidden_layers", [8, 8]):
         size = max(1, min(int(units), 256))
@@ -173,7 +199,7 @@ def build_model(config: dict) -> nn.Sequential:
             layers.append(nn.Dropout(dropout))
         previous = size
 
-    layers.append(nn.Linear(previous, 2))
+    layers.append(nn.Linear(previous, output_units))
     model = nn.Sequential(*layers)
     _apply_init(model, str(config.get("init", "he")))
     return model
@@ -203,16 +229,28 @@ def _decision_boundary(
     model: nn.Module,
     features: np.ndarray,
     labels: np.ndarray,
+    input_dim: int = 2,
     sample: int = 320,
 ) -> dict:
     axis = np.linspace(-BOUNDARY_RANGE, BOUNDARY_RANGE, BOUNDARY_SIZE)
     grid_x, grid_y = np.meshgrid(axis, axis)
-    points = np.stack([grid_x.ravel(), grid_y.ravel()], axis=1).astype("float32")
+    flat = np.stack([grid_x.ravel(), grid_y.ravel()], axis=1).astype("float32")
+
+    # 输入维度大于 2 时，其余维度补 0（只看前两维的切面）
+    if input_dim > 2:
+        points = np.zeros((len(flat), input_dim), dtype="float32")
+        points[:, :2] = flat
+    else:
+        points = flat[:, :input_dim]
 
     model.eval()
     with torch.no_grad():
         logits = model(torch.from_numpy(points))
-        probabilities = torch.softmax(logits, dim=1)[:, 1].numpy()
+        probabilities = torch.softmax(logits, dim=1).numpy()
+
+    # 多分类时前端按「每个格子的预测类别 + 置信度」着色
+    predicted = probabilities.argmax(axis=1)
+    confidence = probabilities.max(axis=1)
 
     step = max(1, len(features) // sample)
     sampled = features[::step][:sample]
@@ -223,7 +261,8 @@ def _decision_boundary(
         "size": BOUNDARY_SIZE,
         "min": -BOUNDARY_RANGE,
         "max": BOUNDARY_RANGE,
-        "values": [round(float(value), 4) for value in probabilities],
+        "classes": [int(value) for value in predicted],
+        "confidence": [round(float(value), 4) for value in confidence],
         "points": [
             {
                 "x": round(float(point[0]), 4),
@@ -243,8 +282,11 @@ def _run(task: LabTask) -> None:
     l2 = float(config.get("l2", 0.0))
 
     try:
-        features, labels = build_spiral_dataset()
-        split = 1400
+        input_units = max(1, min(int(config.get("input_units", 2)), 16))
+        output_units = max(2, min(int(config.get("output_units", 2)), 8))
+
+        features, labels = build_dataset(input_units, output_units)
+        split = min(1400, max(100, len(features) - 100))
         x_train = torch.from_numpy(features[:split])
         y_train = torch.from_numpy(labels[:split])
         x_val = torch.from_numpy(features[split:])
@@ -272,6 +314,8 @@ def _run(task: LabTask) -> None:
                 "task_id": task.task_id,
                 "total_epochs": epochs,
                 "parameter_count": parameter_count,
+                "input_units": input_units,
+                "output_units": output_units,
                 "train_size": int(x_train.shape[0]),
                 "val_size": int(x_val.shape[0]),
             },
@@ -338,7 +382,10 @@ def _run(task: LabTask) -> None:
 
             if epoch == 1 or epoch % BOUNDARY_EVERY == 0 or epoch == epochs:
                 emit(task, _weight_histogram(model))
-                emit(task, _decision_boundary(model, features, labels))
+                emit(
+                    task,
+                    _decision_boundary(model, features, labels, input_dim=input_units),
+                )
 
         # 训练结束（含中止）都保留模型与数据，供传播演示 / 降维投影使用
         model.eval()

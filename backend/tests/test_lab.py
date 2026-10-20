@@ -64,7 +64,9 @@ def test_lab_streams_epochs_and_visuals(
     assert any(event["type"] == "weights" for event in events)
     boundary = next(event for event in events if event["type"] == "boundary")
     assert boundary["size"] == 48
-    assert len(boundary["values"]) == 48 * 48
+    assert len(boundary["classes"]) == 48 * 48
+    assert len(boundary["confidence"]) == 48 * 48
+    assert set(boundary["classes"]) <= {0, 1}
 
     epoch = next(event for event in events if event["type"] == "epoch")
     assert "train_loss" in epoch
@@ -184,6 +186,52 @@ def test_lab_attention_history_and_tsne(
     assert mapped["method"] == "tsne"
     assert mapped["explained"] == []
     assert len(mapped["points"]) > 0
+
+
+def test_lab_custom_input_and_output_units(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """输入神经元数与输出类别数可调：4 → 6 → 3。"""
+    started = client.post(
+        "/api/lab/train",
+        json={
+            "config": {
+                "input_units": 4,
+                "output_units": 3,
+                "hidden_layers": [6],
+                "epochs": 2,
+                "batch_size": 64,
+            }
+        },
+        headers=auth_headers,
+    )
+    assert started.status_code == 202, started.text
+    # 4×6+6 + 6×3+3 = 51
+    assert started.json()["parameter_count"] == 51
+    task_id = started.json()["task_id"]
+
+    events: list[dict] = []
+    with client.websocket_connect(
+        f"/ws/lab/{task_id}?token={_token(auth_headers)}"
+    ) as ws:
+        while True:
+            event = ws.receive_json()
+            events.append(event)
+            if event["type"] in {"completed", "failed", "stopped"}:
+                break
+
+    started_event = events[0]
+    assert started_event["input_units"] == 4
+    assert started_event["output_units"] == 3
+    assert events[-1]["type"] == "completed", events[-1]
+
+    boundary = next(event for event in events if event["type"] == "boundary")
+    assert set(boundary["classes"]) <= {0, 1, 2}
+    assert {point["label"] for point in boundary["points"]} <= {0, 1, 2}
+
+    # 注意力维度跟随输入神经元数
+    epoch = next(event for event in events if event["type"] == "epoch")
+    assert len(epoch["attention"]) == 4
 
 
 def test_lab_inspect_requires_training(

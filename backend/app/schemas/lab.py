@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class LabConfig(BaseModel):
+    input_units: int = Field(default=2, ge=1, le=16, description="输入神经元数")
+    output_units: int = Field(default=2, ge=2, le=8, description="输出类别数")
     hidden_layers: list[int] = Field(
         default_factory=lambda: [8, 8], min_length=1, max_length=6
     )
