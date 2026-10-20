@@ -33,7 +33,10 @@ export interface LabBoundaryEvent {
   size: number
   min: number
   max: number
-  values: number[]
+  /** 每个网格的预测类别 */
+  classes: number[]
+  /** 每个网格的预测置信度（0-1） */
+  confidence: number[]
   points: LabPoint[]
 }
 
@@ -42,6 +45,8 @@ export interface LabStartedEvent {
   task_id: string
   total_epochs: number
   parameter_count: number
+  input_units: number
+  output_units: number
   train_size: number
   val_size: number
 }

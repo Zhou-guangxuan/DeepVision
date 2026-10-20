@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
             <canvas ref="canvasRef" class="h-full w-full" />
           </div>
           <p class="mt-2 text-[10px] text-muted">
-            青色为类别 0、橙色为类别 1；坐标是该层激活经
+            每个颜色代表一个类别；坐标是该层激活经
             {{ projection?.method === 'tsne' ? 't-SNE' : 'PCA' }}
             降到二维后的位置。
           </p>

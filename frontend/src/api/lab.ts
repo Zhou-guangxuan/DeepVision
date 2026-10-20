@@ -5,6 +5,8 @@ export type LabInit = 'he' | 'xavier' | 'uniform'
 export type LabOptimizer = 'adam' | 'sgd'
 
 export interface LabConfig {
+  input_units: number
+  output_units: number
   hidden_layers: number[]
   activation: LabActivation
   init: LabInit

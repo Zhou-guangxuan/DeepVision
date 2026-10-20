@@ -157,18 +157,31 @@ function drawBoundary(): void {
   context.clearRect(0, 0, width, height)
   if (!data) return
 
-  const { size, min, max, values, points } = data
+  const { size, min, max, classes, confidence, points } = data
   const cellWidth = width / size
   const cellHeight = height / size
 
+  // 多分类调色板：与数据点同色，便于对照
+  const palette = [
+    [34, 211, 238],
+    [253, 186, 116],
+    [167, 139, 250],
+    [52, 211, 153],
+    [244, 114, 182],
+    [250, 204, 21],
+    [96, 165, 250],
+    [251, 113, 133],
+  ]
+
   for (let row = 0; row < size; row += 1) {
     for (let column = 0; column < size; column += 1) {
-      const probability = values[row * size + column] ?? 0.5
-      // 类别 1 用橙色、类别 0 用青色，按概率混合
-      const red = Math.round(34 + (249 - 34) * probability)
-      const green = Math.round(211 + (115 - 211) * probability)
-      const blue = Math.round(238 + (22 - 238) * probability)
-      context.fillStyle = `rgba(${red}, ${green}, ${blue}, 0.28)`
+      const index = row * size + column
+      const predicted = classes[index] ?? 0
+      const certainty = confidence[index] ?? 0.5
+      const [red, green, blue] = palette[predicted % palette.length]
+
+      // 置信度越高，背景越实
+      context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${0.12 + certainty * 0.3})`
       context.fillRect(
         column * cellWidth,
         height - (row + 1) * cellHeight,
@@ -182,9 +195,11 @@ function drawBoundary(): void {
   for (const point of points) {
     const px = ((point.x - min) / span) * width
     const py = height - ((point.y - min) / span) * height
+    const [red, green, blue] = palette[point.label % palette.length]
+
     context.beginPath()
     context.arc(px, py, 1.8, 0, Math.PI * 2)
-    context.fillStyle = point.label === 0 ? '#67e8f9' : '#fdba74'
+    context.fillStyle = `rgb(${red}, ${green}, ${blue})`
     context.fill()
   }
 }

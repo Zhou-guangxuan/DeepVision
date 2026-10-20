@@ -56,6 +56,10 @@ const router = useRouter()
 const toast = useToastStore()
 
 const hiddenLayers = ref<number[]>([8, 8])
+/** 输入神经元数（= 特征维度） */
+const inputUnits = ref(2)
+/** 输出类别数 */
+const outputUnits = ref(2)
 const activation = ref<LabActivation>('relu')
 const init = ref<LabInit>('he')
 const optimizer = ref<LabOptimizer>('adam')
@@ -100,18 +104,22 @@ function openInspector(tab: InspectorTab): void {
   inspectorOpen.value = true
 }
 
-const layers = computed(() => [2, ...hiddenLayers.value, 2])
+const layers = computed(() => [
+  inputUnits.value,
+  ...hiddenLayers.value,
+  outputUnits.value,
+])
 
 const structureText = computed(() => layers.value.join(' → '))
 
 const parameterCount = computed(() => {
-  let previous = 2
+  let previous = inputUnits.value
   let total = 0
   for (const units of hiddenLayers.value) {
     total += previous * units + units
     previous = units
   }
-  total += previous * 2 + 2
+  total += previous * outputUnits.value + outputUnits.value
   return total
 })
 
@@ -120,6 +128,8 @@ const displayParamCount = computed(
 )
 
 const config = computed<LabConfig>(() => ({
+  input_units: inputUnits.value,
+  output_units: outputUnits.value,
   hidden_layers: hiddenLayers.value,
   activation: activation.value,
   init: init.value,
@@ -351,6 +361,52 @@ function diagnoseTraining(): void {
       >
         <section class="space-y-2">
           <div
+            class="rounded-md border p-2"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] text-secondary">输入神经元</span>
+              <span class="font-mono text-xs text-primary">
+                {{ inputUnits }}
+              </span>
+            </div>
+            <input
+              v-model.number="inputUnits"
+              type="range"
+              min="1"
+              max="8"
+              step="1"
+              class="mt-1.5 w-full accent-[var(--brand-cyan)]"
+            />
+            <p class="mt-1 text-[10px] text-muted">
+              即特征维度，超出 2 维的部分为噪声
+            </p>
+          </div>
+
+          <div
+            class="rounded-md border p-2"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] text-secondary">输出类别数</span>
+              <span class="font-mono text-xs text-primary">
+                {{ outputUnits }}
+              </span>
+            </div>
+            <input
+              v-model.number="outputUnits"
+              type="range"
+              min="2"
+              max="6"
+              step="1"
+              class="mt-1.5 w-full accent-[var(--brand-cyan)]"
+            />
+            <p class="mt-1 text-[10px] text-muted">
+              2 类为螺旋，3 类以上为环形分布
+            </p>
+          </div>
+
+          <div
             v-for="(units, index) in hiddenLayers"
             :key="index"
             class="rounded-md border p-2"
@@ -567,8 +623,8 @@ function diagnoseTraining(): void {
             重置视角
           </AppButton>
           <p class="text-[10px] leading-relaxed text-muted">
-            绿灯表示模型已就绪，可直接「开始训练」；训练数据为内置双螺旋（1400 /
-            600）。
+            绿灯表示模型已就绪，可直接「开始训练」；训练数据按输入维度与类别数自动生成（1400
+            / 600）。
           </p>
         </section>
       </aside>
@@ -714,7 +770,10 @@ function diagnoseTraining(): void {
             <dl class="mt-1.5 space-y-1 text-[11px]">
               <div class="flex justify-between">
                 <dt class="text-muted">数据集</dt>
-                <dd class="text-secondary">双螺旋 · 1400 / 600</dd>
+                <dd class="text-secondary">
+                  {{ outputUnits === 2 ? '双螺旋' : '多类环形' }} ·
+                  {{ inputUnits }} 维 · 1400 / 600
+                </dd>
               </div>
               <div class="flex justify-between">
                 <dt class="text-muted">网络结构</dt>
