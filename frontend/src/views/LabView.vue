@@ -6,12 +6,14 @@ import DOMPurify from 'dompurify'
 
 import { streamChat } from '@/api/ai'
 import {
+  diagnoseLab,
   pauseLab,
   resumeLab,
   startLab,
   stopLab,
   type LabActivation,
   type LabConfig,
+  type LabDiagnosis,
   type LabInit,
   type LabOptimizer,
 } from '@/api/lab'
@@ -26,6 +28,7 @@ import {
   type LabEvent,
   type LabWeightsEvent,
 } from '@/composables/useLabSocket'
+import { TEACHING_TASKS, type TeachingTask } from '@/data/teachingTasks'
 import { useToastStore } from '@/stores/toast'
 
 type LabStatus =
@@ -93,6 +96,23 @@ const inspectorTab = ref<InspectorTab>('propagation')
 /** 输入特征注意力，用于在 3D 中高亮输入层 */
 const saliency = ref<number[]>([])
 
+// ---- 教学任务（P1）----
+const taskPanelOpen = ref(false)
+const currentTask = ref<TeachingTask | null>(null)
+const taskResult = ref<{
+  passed: boolean
+  reason: string
+  diagnosis: LabDiagnosis | null
+} | null>(null)
+const checkpointAnswers = ref<Record<number, number>>({})
+const evaluating = ref(false)
+const previousSummary = ref<{
+  label: string
+  accuracy: number
+  loss: number
+  epochs: number
+} | null>(null)
+
 const renderedAnswer = computed(() => {
   if (!answer.value) return ''
   const html = marked.parse(answer.value, { async: false }) as string
@@ -102,6 +122,108 @@ const renderedAnswer = computed(() => {
 function openInspector(tab: InspectorTab): void {
   inspectorTab.value = tab
   inspectorOpen.value = true
+}
+
+/** 应用教学任务预设 */
+function applyTask(task: TeachingTask): void {
+  const preset = task.preset
+  inputUnits.value = preset.inputUnits
+  outputUnits.value = preset.outputUnits
+  hiddenLayers.value = [...preset.hiddenLayers]
+  activation.value = preset.activation
+  init.value = preset.init
+  optimizer.value = preset.optimizer
+  learningRate.value = preset.learningRate
+  batchSize.value = preset.batchSize
+  epochs.value = preset.epochs
+  l2.value = preset.l2
+  dropout.value = preset.dropout
+
+  currentTask.value = task
+  taskResult.value = null
+  checkpointAnswers.value = {}
+  previousSummary.value = null
+  taskPanelOpen.value = false
+  resetToken.value += 1
+  toast.info(`已应用：${task.title}`)
+}
+
+/** 训练结束后判定是否达成教学目标 */
+async function evaluateTask(): Promise<void> {
+  const task = currentTask.value
+  if (!task) return
+
+  evaluating.value = true
+  try {
+    const diagnosis = taskId.value ? await diagnoseLab(taskId.value) : null
+    const rule = task.success
+
+    let passed = false
+    let reason = ''
+    if (rule.metric === 'accuracy') {
+      const accuracy = latest.value?.accuracy ?? 0
+      passed = accuracy >= rule.threshold
+      reason = `最终验证准确率 ${accuracy.toFixed(3)}，目标 ≥ ${rule.threshold}`
+    } else {
+      const hit = diagnosis?.issues.find((issue) =>
+        rule.codes.includes(issue.code),
+      )
+      passed = Boolean(hit)
+      reason = hit
+        ? `出现了预期现象：${hit.title}`
+        : '没有出现预期的异常现象，可以按提示调整后再试一次'
+    }
+
+    taskResult.value = { passed, reason, diagnosis }
+  } finally {
+    evaluating.value = false
+  }
+}
+
+function answerCheckpoint(index: number, option: number): void {
+  checkpointAnswers.value = { ...checkpointAnswers.value, [index]: option }
+}
+
+/** 保存本组结果，清空曲线，准备跑第二组做对比 */
+function prepareComparison(): void {
+  const current = latest.value
+  if (!current || !currentTask.value) return
+
+  previousSummary.value = {
+    label: currentTask.value.title,
+    accuracy: current.accuracy,
+    loss: current.val_loss,
+    epochs: current.epoch,
+  }
+  history.value = []
+  latest.value = null
+  weights.value = null
+  boundary.value = null
+  status.value = 'idle'
+  taskResult.value = null
+  checkpointAnswers.value = {}
+  toast.info('已记录本组结果，调整参数后可再跑一组')
+}
+
+function closeTaskResult(): void {
+  taskResult.value = null
+}
+
+/** 任务预设的结构摘要，例如 2 → 8 → 8 → 2 */
+function presetSummary(task: TeachingTask): string {
+  return [
+    task.preset.inputUnits,
+    ...task.preset.hiddenLayers,
+    task.preset.outputUnits,
+  ].join(' → ')
+}
+
+function successText(task: TeachingTask): string {
+  const rule = task.success
+  if (rule.metric === 'accuracy') {
+    return `验证准确率 ≥ ${rule.threshold}`
+  }
+  return '训练曲线出现预期异常（由诊断规则自动判定）'
 }
 
 const layers = computed(() => [
@@ -172,6 +294,7 @@ function onLabEvent(event: LabEvent): void {
     case 'completed':
       status.value = 'completed'
       toast.success('训练完成')
+      if (currentTask.value) void evaluateTask()
       break
     case 'stopped':
       status.value = 'stopped'
@@ -312,6 +435,9 @@ function diagnoseTraining(): void {
           L
         </span>
         <span class="text-sm font-semibold text-primary">教学实验室</span>
+        <span v-if="currentTask" class="text-[11px] text-muted">
+          任务：{{ currentTask.title }}
+        </span>
 
         <nav class="ml-4 hidden items-center gap-1 lg:flex">
           <button
@@ -343,6 +469,9 @@ function diagnoseTraining(): void {
         >
           {{ STATUS_TEXT[status] }}
         </span>
+        <AppButton variant="secondary" size="sm" @click="taskPanelOpen = true">
+          实验任务
+        </AppButton>
         <AppButton variant="ghost" size="sm" @click="router.push('/workspace')">
           返回工作台
         </AppButton>
@@ -816,6 +945,234 @@ function diagnoseTraining(): void {
       @saliency="saliency = $event"
       @close="inspectorOpen = false"
     />
+
+    <!-- 实验任务 -->
+    <div
+      v-if="taskPanelOpen"
+      class="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      @click.self="taskPanelOpen = false"
+    >
+      <div
+        class="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border"
+        :style="{
+          borderColor: 'var(--border-default)',
+          background: 'var(--bg-surface)',
+        }"
+      >
+        <header
+          class="flex shrink-0 items-center justify-between border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <div>
+            <h3 class="text-sm font-medium text-primary">实验任务</h3>
+            <p class="mt-0.5 text-[11px] text-muted">
+              选择任务会自动填好参数，训练结束后检查是否达成目标
+            </p>
+          </div>
+          <AppButton variant="ghost" size="sm" @click="taskPanelOpen = false">
+            关闭
+          </AppButton>
+        </header>
+
+        <div class="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+          <div
+            v-for="task in TEACHING_TASKS"
+            :key="task.id"
+            class="rounded-md border p-3"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium text-primary">
+                    {{ task.title }}
+                  </span>
+                  <span
+                    class="rounded-sm px-1.5 py-0.5 text-[10px]"
+                    :style="{
+                      color:
+                        task.kind === 'goal'
+                          ? 'var(--success)'
+                          : 'var(--warning)',
+                      background:
+                        task.kind === 'goal'
+                          ? 'rgba(52, 211, 153, 0.12)'
+                          : 'rgba(251, 191, 36, 0.12)',
+                    }"
+                  >
+                    {{ task.kind === 'goal' ? '目标' : '错误示范' }}
+                  </span>
+                </div>
+                <p class="mt-1 text-[11px] leading-relaxed text-secondary">
+                  {{ task.goal }}
+                </p>
+                <p class="mt-1 text-[11px] leading-relaxed text-muted">
+                  {{ task.hint }}
+                </p>
+                <p class="mt-1.5 font-mono text-[10px] text-muted">
+                  预设 {{ presetSummary(task) }} · lr
+                  {{ task.preset.learningRate }} · {{ task.preset.epochs }} 轮 ·
+                  达标条件：{{ successText(task) }}
+                </p>
+              </div>
+              <AppButton
+                size="sm"
+                :disabled="status === 'running' || status === 'paused'"
+                @click="applyTask(task)"
+              >
+                应用
+              </AppButton>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 任务结果与检查点 -->
+    <div
+      v-if="taskResult && currentTask"
+      class="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      @click.self="closeTaskResult"
+    >
+      <div
+        class="flex max-h-[86vh] w-full max-w-xl flex-col overflow-hidden rounded-lg border"
+        :style="{
+          borderColor: 'var(--border-default)',
+          background: 'var(--bg-surface)',
+        }"
+      >
+        <header
+          class="flex shrink-0 items-center justify-between border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <div>
+            <h3 class="text-sm font-medium text-primary">
+              {{ currentTask.title }}
+            </h3>
+            <p class="mt-0.5 text-[11px] text-muted">{{ currentTask.goal }}</p>
+          </div>
+          <span
+            class="rounded-sm px-2 py-1 text-[11px]"
+            :style="{
+              color: taskResult.passed ? 'var(--success)' : 'var(--warning)',
+              background: taskResult.passed
+                ? 'rgba(52, 211, 153, 0.12)'
+                : 'rgba(251, 191, 36, 0.12)',
+            }"
+          >
+            {{ taskResult.passed ? '已达成目标' : '未达成，可再试' }}
+          </span>
+        </header>
+
+        <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          <p class="text-[11px] text-secondary">{{ taskResult.reason }}</p>
+
+          <p v-if="evaluating" class="text-[11px] text-muted">
+            正在诊断训练曲线…
+          </p>
+
+          <div
+            v-if="taskResult.diagnosis"
+            class="rounded-md border p-2.5"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <p class="text-[11px] text-secondary">
+              {{ taskResult.diagnosis.summary }}
+            </p>
+            <ul class="mt-1.5 space-y-1">
+              <li
+                v-for="issue in taskResult.diagnosis.issues"
+                :key="issue.code"
+                class="text-[11px] text-muted"
+              >
+                · {{ issue.title }}：{{ issue.suggestion }}
+              </li>
+            </ul>
+          </div>
+
+          <div
+            v-if="previousSummary"
+            class="rounded-md border p-2.5 text-[11px]"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <p class="text-secondary">对比实验</p>
+            <div class="mt-1 flex justify-between text-muted">
+              <span>{{ previousSummary.label }}</span>
+              <span class="font-mono">
+                准确率 {{ previousSummary.accuracy.toFixed(3) }} · loss
+                {{ previousSummary.loss.toFixed(4) }}
+              </span>
+            </div>
+            <div class="mt-1 flex justify-between text-muted">
+              <span>本组</span>
+              <span class="font-mono">
+                准确率 {{ (latest?.accuracy ?? 0).toFixed(3) }} · loss
+                {{ (latest?.val_loss ?? 0).toFixed(4) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <p class="text-[11px] font-medium text-secondary">检查点</p>
+            <div
+              v-for="(checkpoint, index) in currentTask.checkpoints"
+              :key="index"
+              class="rounded-md border p-2.5"
+              :style="{ borderColor: 'var(--border-subtle)' }"
+            >
+              <p class="text-[11px] text-secondary">
+                {{ index + 1 }}. {{ checkpoint.question }}
+              </p>
+              <label
+                v-for="(option, optionIndex) in checkpoint.options"
+                :key="optionIndex"
+                class="mt-1 flex cursor-pointer items-start gap-1.5 text-[11px] text-muted"
+              >
+                <input
+                  type="radio"
+                  :name="`checkpoint-${index}`"
+                  class="mt-0.5 accent-[var(--brand-cyan)]"
+                  :checked="checkpointAnswers[index] === optionIndex"
+                  @change="answerCheckpoint(index, optionIndex)"
+                />
+                <span>{{ option }}</span>
+              </label>
+              <p
+                v-if="checkpointAnswers[index] !== undefined"
+                class="mt-1.5 text-[11px] leading-relaxed"
+                :style="{
+                  color:
+                    checkpointAnswers[index] === checkpoint.answer
+                      ? 'var(--success)'
+                      : 'var(--danger)',
+                }"
+              >
+                {{
+                  checkpointAnswers[index] === checkpoint.answer
+                    ? '正确：'
+                    : '再想想：'
+                }}{{ checkpoint.explain }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <footer
+          class="flex shrink-0 justify-end gap-2 border-t px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :disabled="status !== 'completed'"
+            @click="prepareComparison"
+          >
+            再跑一组对比
+          </AppButton>
+          <AppButton size="sm" @click="closeTaskResult">关闭</AppButton>
+        </footer>
+      </div>
+    </div>
   </div>
 </template>
 

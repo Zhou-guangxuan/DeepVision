@@ -121,3 +121,25 @@ export async function attentionLab(
   )
   return data
 }
+
+/** 教学任务的曲线诊断（复用记录级规则引擎） */
+export async function diagnoseLab(taskId: string): Promise<LabDiagnosis> {
+  const { data } = await http.get<LabDiagnosis>(`/api/lab/${taskId}/diagnosis`)
+  return data
+}
+
+export interface LabDiagnosisIssue {
+  code: string
+  severity: 'error' | 'warning' | 'info'
+  title: string
+  detail: string
+  suggestion: string
+  evidence: Record<string, unknown>
+}
+
+export interface LabDiagnosis {
+  healthy: boolean | null
+  summary: string
+  issues: LabDiagnosisIssue[]
+  stats: Record<string, number>
+}
