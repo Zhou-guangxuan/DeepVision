@@ -14,7 +14,11 @@ from app.models.dataset import Dataset
 from app.models.record import TrainingRecord
 from app.models.user import User
 from app.schemas.common import Page
+from app.schemas.graph import ModelConfigIn
 from app.schemas.record import RecordCreate, RecordResponse
+from app.schemas.train import TrainStartResponse
+from app.services import curve_diagnosis, training
+from app.services.graph_validation import validate_model_config
 
 router = APIRouter(prefix="/records", tags=["records"])
 
@@ -91,6 +95,131 @@ def create_record(
     db.commit()
     db.refresh(record)
     return RecordResponse.model_validate(record)
+
+
+@router.get("/compare", summary="多实验曲线对比（2–4 条）")
+def compare_records(
+    ids: str = Query(description="逗号分隔的记录 ID，例如 3,5,8"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    id_list = [int(item) for item in ids.split(",") if item.strip().isdigit()]
+    if not 2 <= len(id_list) <= 4:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_SELECTION",
+            "请选择 2–4 条记录进行对比",
+        )
+
+    rows = db.scalars(
+        select(TrainingRecord).where(
+            TrainingRecord.id.in_(id_list),
+            TrainingRecord.user_id == current_user.id,
+        )
+    ).all()
+    if len(rows) != len(set(id_list)):
+        raise APIError(
+            status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "部分训练记录不存在"
+        )
+
+    order = {record_id: index for index, record_id in enumerate(id_list)}
+    rows.sort(key=lambda row: order.get(row.id, 0))
+
+    runs = []
+    for row in rows:
+        metrics = row.result_metrics or {}
+        history = metrics.get("history") or []
+        runs.append(
+            {
+                "id": row.id,
+                "task_id": row.task_id,
+                "source": row.source,
+                "status": row.status,
+                "created_at": row.created_at.isoformat(),
+                "epochs": len(history),
+                "final_accuracy": metrics.get("final_accuracy"),
+                "history": [
+                    {
+                        "epoch": item.get("epoch"),
+                        "train_loss": item.get("train_loss"),
+                        "val_loss": item.get("val_loss"),
+                        "accuracy": item.get("accuracy"),
+                    }
+                    for item in history
+                ],
+            }
+        )
+
+    return {"runs": runs}
+
+
+@router.get("/{record_id}/diagnosis", summary="训练曲线诊断")
+def diagnose_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    record = db.get(TrainingRecord, record_id)
+    if record is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在")
+    _ensure_owned(record, current_user)
+
+    history = (record.result_metrics or {}).get("history") or []
+    return curve_diagnosis.diagnose_curve(history)
+
+
+@router.post(
+    "/{record_id}/rerun",
+    response_model=TrainStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="按原配置重跑（可复现）",
+)
+def rerun_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TrainStartResponse:
+    record = db.get(TrainingRecord, record_id)
+    if record is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在")
+    _ensure_owned(record, current_user)
+
+    if record.dataset_id is None:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "RERUN_UNAVAILABLE",
+            "该记录没有关联数据集（例如教学实验室记录），无法重跑",
+        )
+
+    dataset = db.get(Dataset, record.dataset_id)
+    if dataset is None or dataset.user_id != current_user.id:
+        raise APIError(
+            status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在或无权访问"
+        )
+
+    config = ModelConfigIn(**record.network_config)
+    result = validate_model_config(config)
+    if not result["valid"]:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_MODEL_CONFIG",
+            result["errors"][0] if result["errors"] else "拓扑结构非法",
+        )
+
+    hyper = dict(record.hyperparameters or {})
+    hyper.setdefault("epochs", 10)
+    hyper.setdefault("batch_size", 32)
+    hyper.setdefault("learning_rate", 0.001)
+
+    task = training.create_task(
+        user_id=current_user.id,
+        dataset_id=record.dataset_id,
+        config=record.network_config,
+        plan=result["execution_plan"],
+        hyper=hyper,
+    )
+
+    return TrainStartResponse(task_id=task.task_id, total_epochs=int(hyper["epochs"]))
 
 
 @router.get("/{record_id}", response_model=RecordResponse, summary="训练记录详情")

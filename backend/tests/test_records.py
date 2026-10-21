@@ -164,3 +164,74 @@ def test_invalid_status_rejected(
     payload = dict(SAMPLE_RECORD, status="unknown")
     resp = client.post("/api/records", json=payload, headers=auth_headers)
     assert resp.status_code == 422
+
+
+def _record_with_history(task_id: str, history: list[dict]) -> dict:
+    record = dict(SAMPLE_RECORD)
+    record["task_id"] = task_id
+    record["result_metrics"] = {
+        **SAMPLE_RECORD["result_metrics"],
+        "history": history,
+    }
+    return record
+
+
+def test_record_diagnosis_and_compare(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    history = [
+        {
+            "epoch": index + 1,
+            "train_loss": round(0.9 - 0.05 * index, 4),
+            "val_loss": round(0.95 - 0.04 * index, 4),
+            "accuracy": 0.5,
+        }
+        for index in range(10)
+    ]
+
+    first = client.post(
+        "/api/records",
+        json=_record_with_history("task-d1", history),
+        headers=auth_headers,
+    ).json()
+    second = client.post(
+        "/api/records",
+        json=_record_with_history("task-d2", history),
+        headers=auth_headers,
+    ).json()
+
+    diagnosis = client.get(
+        f"/api/records/{first['id']}/diagnosis", headers=auth_headers
+    )
+    assert diagnosis.status_code == 200
+    body = diagnosis.json()
+    assert body["healthy"] is True
+    assert body["stats"]["epochs"] == 10
+
+    compare = client.get(
+        f"/api/records/compare?ids={first['id']},{second['id']}",
+        headers=auth_headers,
+    )
+    assert compare.status_code == 200
+    runs = compare.json()["runs"]
+    assert [run["id"] for run in runs] == [first["id"], second["id"]]
+    assert runs[0]["history"][0]["epoch"] == 1
+
+
+def test_compare_requires_two_to_four_ids(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    resp = client.get("/api/records/compare?ids=1", headers=auth_headers)
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "INVALID_SELECTION"
+
+
+def test_rerun_requires_dataset(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    payload = dict(SAMPLE_RECORD, task_id="task-r1")
+    created = client.post("/api/records", json=payload, headers=auth_headers).json()
+
+    resp = client.post(f"/api/records/{created['id']}/rerun", headers=auth_headers)
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "RERUN_UNAVAILABLE"

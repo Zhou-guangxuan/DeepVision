@@ -149,6 +149,7 @@ def _finalize(
             "final_accuracy": metrics.get("accuracy"),
             "duration_sec": duration,
             "epochs": last_epoch,
+            "seed": int(task.hyper.get("seed", 42)),
             "history": list(task.history),
             "layer_stats": list(task.layer_stats),
             "error": failure,
@@ -220,6 +221,10 @@ def _run_training(task: TrainingTask) -> None:
     result_status = STATUS_FAILED
 
     try:
+        # 固定随机种子，配合记录里的配置快照保证结果可复现
+        seed = int(task.hyper.get("seed", 42))
+        torch.manual_seed(seed)
+
         dataset = session.get(Dataset, task.dataset_id)
         if dataset is None:
             raise RuntimeError("数据集不存在")

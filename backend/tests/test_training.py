@@ -356,3 +356,33 @@ def test_multi_input_feature_sum_must_match(
     events = _collect(client, started.json()["task_id"], auth_headers)
     assert events[-1]["type"] == "failed"
     assert "特征数之和" in events[-1]["reason"]
+
+
+def test_rerun_record_reproduces_training(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """按原配置重跑：创建新任务，配置与超参保持不变。"""
+    dataset = _upload(client, auth_headers).json()
+
+    started = client.post(
+        "/api/train",
+        json={
+            "dataset_id": dataset["id"],
+            "model_config": _config(),
+            "hyperparameters": {"epochs": 2, "batch_size": 8},
+        },
+        headers=auth_headers,
+    )
+    task_id = started.json()["task_id"]
+    events = _collect(client, task_id, auth_headers)
+    assert events[-1]["type"] == "completed"
+
+    records = client.get("/api/records", headers=auth_headers).json()
+    record = records["items"][0]
+    assert record["result_metrics"]["seed"] == 42
+
+    rerun = client.post(f"/api/records/{record['id']}/rerun", headers=auth_headers)
+    assert rerun.status_code == 202, rerun.text
+    body = rerun.json()
+    assert body["task_id"] != task_id
+    assert body["total_epochs"] == 2
