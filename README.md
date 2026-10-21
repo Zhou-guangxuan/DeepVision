@@ -289,6 +289,9 @@ cd backend
 | GET | `/api/records` | 训练记录列表（分页） | 是 |
 | POST | `/api/records` | 保存训练记录 | 是 |
 | GET | `/api/records/{id}` | 记录详情 | 是 |
+| GET | `/api/records/{id}/diagnosis` | 训练曲线诊断（过拟合 / 欠拟合 / 学习率） | 是 |
+| POST | `/api/records/{id}/rerun` | 按原配置一键重跑 | 是 |
+| GET | `/api/records/compare?ids=` | 多实验曲线对比（2–4 条） | 是 |
 | DELETE | `/api/records/{id}` | 删除记录 | 是 |
 | POST | `/api/graph/validate` | 校验网络拓扑结构 | 是 |
 | POST | `/api/datasets` | 上传并解析 CSV 数据集 | 是 |

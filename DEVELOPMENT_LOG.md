@@ -1211,3 +1211,47 @@ certificate verify failed: self-signed certificate in certificate chain
 
 - 本轮**无代码改动**，仅文档。
 - 六项需求的落地顺序待确认后开始。
+
+---
+
+## 2026-10-21 · P0：曲线诊断、多实验对比、一键重跑
+
+**类型**：功能开发
+**对应提交**：`feat: 曲线诊断、多实验对比与一键重跑（P0）`
+
+### 背景
+
+按 §13.5 路线图落地 P0：先解决「训练过程看不懂 / 结果不可比较 / 无法复现」三个基础问题。
+
+### 后端
+
+| 文件 | 变更 |
+| --- | --- |
+| `app/services/curve_diagnosis.py`（新增） | 规则引擎：发散、过拟合、学习率过大 / 过小、欠拟合；返回问题、证据与建议 |
+| `app/api/v1/records.py` | 新增 `GET /records/{id}/diagnosis`、`GET /records/compare?ids=`、`POST /records/{id}/rerun` |
+| `app/services/training.py` | 训练前 `torch.manual_seed(seed)`；`result_metrics` 记录 `seed` |
+
+**诊断阈值**：`MIN_POINTS=6`、`HIGH_LOSS=0.5`、`FLAT_RATIO=5%`、`OSCILLATION_AMPLITUDE=15%`。均为教学场景启发式，已在文档注明需按数据标定。
+
+### 前端
+
+新增 `/history` 页面（工作台「历史记录」入口）：
+
+- 多选 2–4 条记录 → 对比曲线，支持**按 epoch / 按训练进度**两种对齐方式
+- 每条记录「诊断」→ 弹窗展示问题、证据、建议与关键统计
+- 每条记录「重跑」→ 按原结构与超参创建新任务并跳转训练页
+- 训练曲线 train 实线、val 虚线；准确率单独一张图
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | **96 passed**（新增 6 个诊断用例、3 个记录接口用例、1 个重跑用例） |
+| 前端构建 | 通过（`HistoryView` 独立 chunk 9.6KB） |
+| 实时验证 | 诊断返回 `lr_too_low`；对比 2 条记录各 60 点；实验室记录重跑返回 `RERUN_UNAVAILABLE`（符合预期） |
+
+### 已知限制
+
+- 诊断规则是启发式，阈值针对教学数据集；回归任务（MSE）需重新标定。
+- `source='lab'` 的记录没有关联数据集，不能重跑。
+- 浏览器交互未逐项人工验证（历史页表格、对比图、诊断弹窗）。
