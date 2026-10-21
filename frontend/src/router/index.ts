@@ -36,6 +36,11 @@ const router = createRouter({
       component: () => import('@/views/LabView.vue'),
     },
     {
+      path: '/history',
+      name: 'history',
+      component: () => import('@/views/HistoryView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/workspace',
     },

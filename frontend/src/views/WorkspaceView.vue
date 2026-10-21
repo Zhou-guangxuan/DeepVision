@@ -243,6 +243,13 @@ function onTrainingStarted(taskId: string): void {
         <AppButton variant="secondary" size="sm" @click="router.push('/lab')">
           教学实验室
         </AppButton>
+        <AppButton
+          variant="secondary"
+          size="sm"
+          @click="router.push('/history')"
+        >
+          历史记录
+        </AppButton>
         <AppButton size="sm" @click="showTrainingDialog = true">
           开始训练
         </AppButton>

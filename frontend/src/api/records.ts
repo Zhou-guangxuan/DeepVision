@@ -29,6 +29,7 @@ export interface TrainingRecord {
   result_metrics: Record<string, unknown>
   model_file_url: string | null
   status: RecordStatus
+  source: string
   created_at: string
 }
 
@@ -58,4 +59,66 @@ export async function createRecord(
 
 export async function deleteRecord(id: number): Promise<void> {
   await http.delete(`/api/records/${id}`)
+}
+
+export interface CurvePoint {
+  epoch: number | null
+  train_loss: number | null
+  val_loss: number | null
+  accuracy: number | null
+}
+
+export interface CompareRun {
+  id: number
+  task_id: string
+  source: string
+  status: RecordStatus
+  created_at: string
+  epochs: number
+  final_accuracy: number | null
+  history: CurvePoint[]
+}
+
+export type IssueSeverity = 'error' | 'warning' | 'info'
+
+export interface DiagnosisIssue {
+  code: string
+  severity: IssueSeverity
+  title: string
+  detail: string
+  suggestion: string
+  evidence: Record<string, unknown>
+}
+
+export interface DiagnosisResult {
+  healthy: boolean | null
+  summary: string
+  issues: DiagnosisIssue[]
+  stats: Record<string, number>
+}
+
+export async function compareRecords(
+  ids: number[],
+): Promise<{ runs: CompareRun[] }> {
+  const { data } = await http.get<{ runs: CompareRun[] }>(
+    '/api/records/compare',
+    { params: { ids: ids.join(',') } },
+  )
+  return data
+}
+
+export async function diagnoseRecord(id: number): Promise<DiagnosisResult> {
+  const { data } = await http.get<DiagnosisResult>(
+    `/api/records/${id}/diagnosis`,
+  )
+  return data
+}
+
+export async function rerunRecord(
+  id: number,
+): Promise<{ task_id: string; total_epochs: number }> {
+  const { data } = await http.post<{ task_id: string; total_epochs: number }>(
+    `/api/records/${id}/rerun`,
+  )
+  return data
 }
