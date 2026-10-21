@@ -247,3 +247,17 @@ def test_lab_inspect_requires_training(
     resp = client.get(f"/api/lab/{task_id}/inspect", headers=auth_headers)
     assert resp.status_code == 409
     assert resp.json()["code"] == "LAB_NOT_READY"
+
+
+def test_lab_curve_diagnosis(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """教学任务的曲线诊断复用记录级规则引擎。"""
+    task_id = _train(client, auth_headers, epochs=8)
+
+    resp = client.get(f"/api/lab/{task_id}/diagnosis", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["stats"]["epochs"] == 8
+    assert isinstance(body["issues"], list)
+    assert body["summary"]

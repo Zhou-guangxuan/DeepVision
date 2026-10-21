@@ -10,7 +10,7 @@ from app.schemas.lab import (
     LabStartRequest,
     LabStartResponse,
 )
-from app.services import lab
+from app.services import curve_diagnosis, lab
 
 router = APIRouter(prefix="/lab", tags=["lab"])
 
@@ -140,3 +140,13 @@ def attention_task(
         raise APIError(
             status.HTTP_400_BAD_REQUEST, "LAB_ATTENTION_FAILED", str(exc)
         ) from exc
+
+
+@router.get("/{task_id}/diagnosis", summary="教学任务的曲线诊断")
+def lab_diagnosis(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """复用记录级的规则引擎，直接分析当前任务的历史曲线。"""
+    task = _owned_task(task_id, current_user)
+    return curve_diagnosis.diagnose_curve(task.history)
