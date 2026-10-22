@@ -112,6 +112,63 @@ class DagNet(nn.Module):
 
         return outputs
 
+    def profile(self, x: torch.Tensor) -> list[dict]:
+        """做一次前向并记录每个节点的张量形状、dtype、参数量与前向耗时。
+
+        耗时是单次前向的粗略测量（毫秒），用于教学展示相对开销，
+        不等同于 CUDA / 算子级 profiler。
+        """
+        import time
+
+        outputs: dict[str, torch.Tensor] = {}
+        records: list[dict] = []
+
+        with torch.no_grad():
+            for step in self.steps:
+                node_id = step["node_id"]
+
+                if node_id not in self.ops:
+                    start, end = self.input_slices[node_id]
+                    tensor = x[:, start:end]
+                    outputs[node_id] = tensor
+                    records.append(
+                        {
+                            "node_id": node_id,
+                            "kind": "input",
+                            "in_dim": int(tensor.shape[1]),
+                            "out_dim": int(tensor.shape[1]),
+                            "dtype": str(tensor.dtype).replace("torch.", ""),
+                            "param_count": 0,
+                            "time_ms": 0.0,
+                        }
+                    )
+                    continue
+
+                parts = [outputs[source] for source in step["inputs"]]
+                merged = parts[0] if len(parts) == 1 else torch.cat(parts, dim=1)
+
+                module = self.ops[node_id]
+                begin = time.perf_counter()
+                tensor = module(merged)
+                elapsed = (time.perf_counter() - begin) * 1000
+
+                outputs[node_id] = tensor
+                records.append(
+                    {
+                        "node_id": node_id,
+                        "kind": "layer",
+                        "in_dim": int(merged.shape[1]),
+                        "out_dim": int(tensor.shape[1]),
+                        "dtype": str(tensor.dtype).replace("torch.", ""),
+                        "param_count": sum(
+                            parameter.numel() for parameter in module.parameters()
+                        ),
+                        "time_ms": round(elapsed, 4),
+                    }
+                )
+
+        return records
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         outputs = self.forward_intermediates(x)
 

@@ -47,6 +47,7 @@ class TrainingTask:
     history: list[dict] = field(default_factory=list)
     lifecycle: list[dict] = field(default_factory=list)
     layer_stats: list[dict] = field(default_factory=list)
+    graph_profile: list[dict] = field(default_factory=list)
     subscribers: list[asyncio.Queue] = field(default_factory=list)
     loop: asyncio.AbstractEventLoop | None = None
     stop_event: threading.Event = field(default_factory=threading.Event)
@@ -152,6 +153,7 @@ def _finalize(
             "seed": int(task.hyper.get("seed", 42)),
             "history": list(task.history),
             "layer_stats": list(task.layer_stats),
+            "graph_profile": list(task.graph_profile),
             "error": failure,
         },
         model_file_url=model_path,
@@ -192,6 +194,15 @@ def _collect_layer_stats(
             if parameter.grad is not None
         )
 
+        # 权重分布统计：用于「张量演化」曲线（均值 / 标准差）
+        if parameters:
+            flat = torch.cat([parameter.detach().flatten() for parameter in parameters])
+            weight_mean = float(flat.mean().item())
+            weight_std = float(flat.std().item()) if flat.numel() > 1 else 0.0
+        else:
+            weight_mean = 0.0
+            weight_std = 0.0
+
         activation = outputs.get(node_id)
         activation_mean = (
             float(activation.abs().mean().item()) if activation is not None else 0.0
@@ -201,6 +212,8 @@ def _collect_layer_stats(
             {
                 "node_id": node_id,
                 "weight_norm": round(weight_norm, 6),
+                "weight_mean": round(weight_mean, 6),
+                "weight_std": round(weight_std, 6),
                 "grad_norm": round(grad_norm, 6),
                 "activation_mean": round(activation_mean, 6),
             }
@@ -306,6 +319,10 @@ def _run_training(task: TrainingTask) -> None:
         x_val = torch.from_numpy(prepared.x_val)
         y_val = torch.from_numpy(prepared.y_val)
 
+        # 训练运行时剖析：一次前向记录每层形状、dtype、参数量与耗时
+        profile_batch = x_train[: min(32, int(x_train.shape[0]))]
+        task.graph_profile = net.profile(profile_batch)
+
         batch_size = int(task.hyper.get("batch_size", 32))
         learning_rate = float(task.hyper.get("learning_rate", 0.001))
         epochs = int(task.hyper.get("epochs", task.total_epochs))
@@ -326,6 +343,15 @@ def _run_training(task: TrainingTask) -> None:
                 "output_layers": len(output_ids),
                 "task": task_type,
                 "classes": prepared.classes,
+            },
+        )
+
+        # 计算图剖析结果在训练一开始就推给前端，重连时会随历史事件回放
+        _emit(
+            task,
+            {
+                "type": "graph_profile",
+                "nodes": task.graph_profile,
             },
         )
 

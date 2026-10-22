@@ -152,6 +152,18 @@ def test_training_completes_and_saves_record(
     for item in layer_stats:
         assert item["weight_norm"] > 0
         assert item["activation_mean"] >= 0
+        assert "weight_std" in item
+
+    # 计算图剖析：形状 / dtype / 参数量 / 耗时
+    profile_event = next(event for event in events if event["type"] == "graph_profile")
+    nodes = {item["node_id"]: item for item in profile_event["nodes"]}
+    assert nodes["n1"]["kind"] == "input"
+    assert nodes["n2"]["in_dim"] == 2
+    assert nodes["n2"]["out_dim"] == 8
+    assert nodes["n2"]["param_count"] == 24  # 2×8 + 8
+    assert nodes["n3"]["param_count"] == 18  # 8×2 + 2
+    assert nodes["n2"]["dtype"] == "float32"
+    assert nodes["n2"]["time_ms"] >= 0
 
     records = client.get("/api/records", headers=auth_headers).json()
     assert records["total"] == 1
@@ -160,6 +172,7 @@ def test_training_completes_and_saves_record(
     assert record["task_id"] == task_id
     assert record["result_metrics"]["epochs"] == 3
     assert len(record["result_metrics"]["layer_stats"]) == 2
+    assert len(record["result_metrics"]["graph_profile"]) == 3
 
 
 def test_stop_training(
