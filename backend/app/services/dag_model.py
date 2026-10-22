@@ -173,9 +173,7 @@ class DagNet(nn.Module):
                         "param_count": param_count,
                         "weight_bytes": param_count * 4,
                         "activation_bytes": int(
-                            tensor.shape[0]
-                            * tensor.shape[1]
-                            * tensor.element_size()
+                            tensor.shape[0] * tensor.shape[1] * tensor.element_size()
                         ),
                         "time_ms": round(elapsed, 4),
                     }

@@ -38,8 +38,7 @@ def _nonzero_count(model: nn.Module) -> int:
 def _weight_bytes(model: nn.Module) -> int:
     """参数本身占的字节（不含序列化开销）。"""
     return sum(
-        parameter.numel() * parameter.element_size()
-        for parameter in model.parameters()
+        parameter.numel() * parameter.element_size() for parameter in model.parameters()
     )
 
 

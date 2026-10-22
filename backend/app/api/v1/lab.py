@@ -153,6 +153,30 @@ def lab_diagnosis(
     return curve_diagnosis.diagnose_curve(task.history)
 
 
+@router.get("/{task_id}/snapshots", summary="训练快照列表")
+def lab_snapshots(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = _ready_task(task_id, current_user)
+    return lab.list_snapshots(task)
+
+
+@router.get("/{task_id}/snapshot", summary="回放指定 epoch 的快照")
+def lab_snapshot(
+    task_id: str,
+    epoch: int = Query(ge=1),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = _ready_task(task_id, current_user)
+    try:
+        return lab.snapshot_detail(task, epoch)
+    except ValueError as exc:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST, "LAB_SNAPSHOT_FAILED", str(exc)
+        ) from exc
+
+
 @router.get("/{task_id}/compression", summary="剪枝 / 量化压缩对比")
 def lab_compression(
     task_id: str,

@@ -53,6 +53,8 @@ class LabTask:
     features: np.ndarray | None = None
     labels: np.ndarray | None = None
     record_id: int | None = None
+    # 快照回放：按间隔保存 state_dict（小模型只有几 KB）
+    snapshots: list[dict] = field(default_factory=list)
 
 
 def create_task(*, user_id: int, config: dict) -> LabTask:
@@ -273,6 +275,7 @@ def _decision_boundary(
 def _run(task: LabTask) -> None:
     config = task.config
     epochs = max(1, min(int(config.get("epochs", 60)), 500))
+    snapshot_every = max(1, epochs // 20)
     batch_size = max(1, int(config.get("batch_size", 32)))
     learning_rate = float(config.get("learning_rate", 0.05))
     l2 = float(config.get("l2", 0.0))
@@ -381,6 +384,22 @@ def _run(task: LabTask) -> None:
                 emit(
                     task,
                     _decision_boundary(model, features, labels, input_dim=input_units),
+                )
+
+            # 快照回放：最多保留约 20 份参数
+            if (epoch == 1 or epoch % snapshot_every == 0 or epoch == epochs) and (
+                not task.snapshots or task.snapshots[-1]["epoch"] != epoch
+            ):
+                task.snapshots.append(
+                    {
+                        "epoch": epoch,
+                        "accuracy": round(accuracy, 4),
+                        "val_loss": round(val_loss, 4),
+                        "state": {
+                            key: value.detach().clone()
+                            for key, value in model.state_dict().items()
+                        },
+                    }
                 )
 
         # 训练结束（含中止）都保留模型与数据，供传播演示 / 降维投影使用
@@ -729,4 +748,54 @@ def attention_history(task: LabTask) -> dict:
             }
             for index in range(size)
         ],
+    }
+
+
+def list_snapshots(task: LabTask) -> dict:
+    """列出可回放的快照（只给元信息，不含参数）。"""
+    return {
+        "snapshots": [
+            {
+                "epoch": item["epoch"],
+                "accuracy": item["accuracy"],
+                "val_loss": item["val_loss"],
+            }
+            for item in task.snapshots
+        ],
+        "total_epochs": len(task.history),
+    }
+
+
+def snapshot_detail(task: LabTask, epoch: int) -> dict:
+    """恢复指定 epoch 的参数，返回该时刻的准确率与决策边界。"""
+    if task.model is None or task.features is None or task.labels is None:
+        raise ValueError("模型尚未训练完成")
+
+    snapshot = next((item for item in task.snapshots if item["epoch"] == epoch), None)
+    if snapshot is None:
+        raise ValueError(f"epoch {epoch} 没有快照")
+
+    model = build_model(task.config)
+    model.load_state_dict(snapshot["state"])
+    model.eval()
+
+    input_units = max(1, min(int(task.config.get("input_units", 2)), 16))
+    features = torch.from_numpy(task.features)
+    labels = torch.from_numpy(task.labels)
+
+    with torch.no_grad():
+        logits = model(features)
+        accuracy = float((logits.argmax(dim=1) == labels).float().mean().item())
+        loss = float(nn.CrossEntropyLoss()(logits, labels).item())
+
+    return {
+        "epoch": epoch,
+        "accuracy": round(accuracy, 4),
+        "loss": round(loss, 4),
+        "boundary": _decision_boundary(
+            model,
+            task.features,
+            task.labels,
+            input_dim=input_units,
+        ),
     }

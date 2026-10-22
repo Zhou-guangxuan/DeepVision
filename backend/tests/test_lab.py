@@ -326,3 +326,42 @@ def test_lab_compression(
 
     for item in (baseline, pruned, quantized):
         assert 0.0 <= item["accuracy"] <= 1.0
+
+
+def test_lab_snapshot_replay(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """快照回放：列出快照并恢复任意 epoch 的决策边界。"""
+    task_id = _train(client, auth_headers, epochs=8)
+
+    listed = client.get(f"/api/lab/{task_id}/snapshots", headers=auth_headers)
+    assert listed.status_code == 200, listed.text
+    snapshots = listed.json()["snapshots"]
+    assert len(snapshots) >= 3
+    assert snapshots[0]["epoch"] == 1
+
+    epoch = snapshots[1]["epoch"]
+    detail = client.get(
+        f"/api/lab/{task_id}/snapshot",
+        params={"epoch": epoch},
+        headers=auth_headers,
+    )
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["epoch"] == epoch
+    assert 0.0 <= body["accuracy"] <= 1.0
+    assert len(body["boundary"]["classes"]) > 0
+
+
+def test_lab_snapshot_missing_epoch(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    task_id = _train(client, auth_headers, epochs=4)
+
+    resp = client.get(
+        f"/api/lab/{task_id}/snapshot",
+        params={"epoch": 999},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "LAB_SNAPSHOT_FAILED"
