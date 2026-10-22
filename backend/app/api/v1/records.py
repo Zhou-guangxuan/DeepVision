@@ -247,6 +247,27 @@ def get_record_code(
         raise APIError(status.HTTP_400_BAD_REQUEST, "CODEGEN_FAILED", str(exc)) from exc
 
 
+@router.get("/{record_id}/image-eval", summary="图像训练的混淆矩阵与样本预测")
+def get_image_eval(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    record = db.get(TrainingRecord, record_id)
+    if record is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在")
+    _ensure_owned(record, current_user)
+
+    image_eval = (record.result_metrics or {}).get("image_eval")
+    if not image_eval:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "NOT_IMAGE_RECORD",
+            "该记录不是图像训练，或未保存图像评估",
+        )
+    return image_eval
+
+
 @router.get("/{record_id}", response_model=RecordResponse, summary="训练记录详情")
 def get_record(
     record_id: int,

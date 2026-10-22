@@ -99,7 +99,19 @@ def test_image_training_runs(
 
     records = client.get("/api/records", headers=auth_headers).json()
     assert records["total"] == 1
-    assert records["items"][0]["result_metrics"]["epochs"] == 2
+    record = records["items"][0]
+    assert record["result_metrics"]["epochs"] == 2
+
+    image_eval = record["result_metrics"]["image_eval"]
+    assert len(image_eval["confusion"]) == 2
+    assert len(image_eval["samples"]) > 0
+    assert len(image_eval["samples"][0]["pixels"]) == 8
+
+    detail = client.get(
+        f"/api/records/{record['id']}/image-eval", headers=auth_headers
+    )
+    assert detail.status_code == 200
+    assert detail.json()["size"] == 8
 
 
 def test_image_training_rejects_tabular(

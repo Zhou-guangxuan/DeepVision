@@ -198,6 +198,7 @@ def _finalize(
             "history": list(task.history),
             "layer_stats": list(task.layer_stats),
             "graph_profile": list(task.graph_profile),
+            "image_eval": metrics.get("image_eval"),
             "error": failure,
         },
         model_file_url=model_path,
@@ -626,9 +627,46 @@ def _run_image_training(task: TrainingTask) -> None:
 
         if result_status != STATUS_INTERRUPTED:
             result_status = STATUS_SUCCESS
+
+        # 训练结束后做一次验证集评估：混淆矩阵 + 样本预测网格
+        model.eval()
+        with torch.no_grad():
+            logits = model(x_val)
+            probabilities = torch.softmax(logits, dim=1)
+            predictions = logits.argmax(dim=1)
+
+            confusion = torch.zeros((num_classes, num_classes), dtype=torch.int64)
+            for truth, guess in zip(y_val.tolist(), predictions.tolist(), strict=True):
+                confusion[truth, guess] += 1
+
+            sample_count = min(12, len(x_val))
+            samples = [
+                {
+                    "label": int(y_val[index]),
+                    "prediction": int(predictions[index]),
+                    "probability": round(
+                        float(probabilities[index, predictions[index]]), 4
+                    ),
+                    "pixels": (x_val[index, 0].numpy() * 255)
+                    .round()
+                    .astype(int)
+                    .tolist(),
+                }
+                for index in range(sample_count)
+            ]
+
+        image_eval = {
+            "classes": list(dataset.stats.get("classes", [])),
+            "size": size,
+            "confusion": confusion.tolist(),
+            "samples": samples,
+        }
+        _emit(task, {"type": "image_eval", **image_eval})
+
         metrics = {
             "val_loss": round(val_loss, 6) if last_epoch else None,
             "accuracy": round(accuracy, 6) if last_epoch else None,
+            "image_eval": image_eval,
         }
     except Exception as exc:  # noqa: BLE001
         failure = str(exc)
