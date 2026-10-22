@@ -233,3 +233,48 @@ export async function compressLab(
   )
   return data
 }
+
+export interface SnapshotMeta {
+  epoch: number
+  accuracy: number
+  val_loss: number
+}
+
+export interface BoundaryGrid {
+  size: number
+  min: number
+  max: number
+  classes: number[]
+  confidence: number[]
+  points: { x: number; y: number; label: number }[]
+}
+
+export interface SnapshotDetail {
+  epoch: number
+  accuracy: number
+  loss: number
+  boundary: BoundaryGrid
+}
+
+/** 训练快照列表（用于回放） */
+export async function listSnapshots(
+  taskId: string,
+): Promise<{ snapshots: SnapshotMeta[]; total_epochs: number }> {
+  const { data } = await http.get<{
+    snapshots: SnapshotMeta[]
+    total_epochs: number
+  }>(`/api/lab/${taskId}/snapshots`)
+  return data
+}
+
+/** 恢复指定 epoch 的参数并返回决策边界 */
+export async function getSnapshot(
+  taskId: string,
+  epoch: number,
+): Promise<SnapshotDetail> {
+  const { data } = await http.get<SnapshotDetail>(
+    `/api/lab/${taskId}/snapshot`,
+    { params: { epoch } },
+  )
+  return data
+}

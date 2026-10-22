@@ -8,7 +8,9 @@ import { streamChat } from '@/api/ai'
 import {
   compressLab,
   diagnoseLab,
+  getSnapshot,
   getTune,
+  listSnapshots,
   pauseLab,
   resumeLab,
   startLab,
@@ -20,6 +22,8 @@ import {
   type LabDiagnosis,
   type LabInit,
   type LabOptimizer,
+  type SnapshotDetail,
+  type SnapshotMeta,
   type TuneState,
   type TuneTrial,
 } from '@/api/lab'
@@ -133,6 +137,26 @@ const compressData = ref<CompressionResult | null>(null)
 const compressLoading = ref(false)
 const compressSparsity = ref(0.3)
 
+// ---- 快照回放（P3）----
+const replayOpen = ref(false)
+const replaySnapshots = ref<SnapshotMeta[]>([])
+const replayIndex = ref(0)
+const replayDetail = ref<SnapshotDetail | null>(null)
+const replayLoading = ref(false)
+const replayCanvasRef = ref<HTMLCanvasElement | null>(null)
+let replayTimer: number | null = null
+
+const REPLAY_COLORS = [
+  '#22d3ee',
+  '#a78bfa',
+  '#34d399',
+  '#f97316',
+  '#f472b6',
+  '#facc15',
+  '#60a5fa',
+  '#fb7185',
+]
+
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`
   return `${(value / 1024).toFixed(1)} KB`
@@ -151,6 +175,118 @@ async function loadCompression(sparsity: number): Promise<void> {
     compressLoading.value = false
   }
 }
+
+function stopReplay(): void {
+  if (replayTimer !== null) {
+    window.clearInterval(replayTimer)
+    replayTimer = null
+  }
+}
+
+function drawReplay(): void {
+  const canvas = replayCanvasRef.value
+  const detail = replayDetail.value
+  if (!canvas || !detail) return
+
+  const size = 320
+  const ratio = window.devicePixelRatio || 1
+  canvas.width = Math.round(size * ratio)
+  canvas.height = Math.round(size * ratio)
+  canvas.style.width = `${size}px`
+  canvas.style.height = `${size}px`
+
+  const context = canvas.getContext('2d')
+  if (!context) return
+  context.setTransform(ratio, 0, 0, ratio, 0, 0)
+
+  const grid = detail.boundary
+  const cell = size / grid.size
+  for (let row = 0; row < grid.size; row += 1) {
+    for (let column = 0; column < grid.size; column += 1) {
+      const index = row * grid.size + column
+      const label = grid.classes[index] ?? 0
+      const confidence = grid.confidence[index] ?? 0
+      context.fillStyle = REPLAY_COLORS[label % REPLAY_COLORS.length]
+      context.globalAlpha = 0.12 + 0.6 * confidence
+      context.fillRect(column * cell, row * cell, cell + 0.5, cell + 0.5)
+    }
+  }
+
+  context.globalAlpha = 1
+  for (const point of grid.points) {
+    const x = ((point.x - grid.min) / (grid.max - grid.min)) * size
+    const y = (1 - (point.y - grid.min) / (grid.max - grid.min)) * size
+    context.beginPath()
+    context.arc(x, y, 2, 0, Math.PI * 2)
+    context.fillStyle =
+      REPLAY_COLORS[point.label % REPLAY_COLORS.length] ?? '#e2e8f0'
+    context.fill()
+    context.strokeStyle = 'rgba(15, 23, 42, 0.85)'
+    context.lineWidth = 0.6
+    context.stroke()
+  }
+}
+
+async function loadReplayEpoch(index: number): Promise<void> {
+  if (!taskId.value || replaySnapshots.value.length === 0) return
+  const clamped = Math.min(Math.max(index, 0), replaySnapshots.value.length - 1)
+  replayIndex.value = clamped
+  replayLoading.value = true
+  try {
+    replayDetail.value = await getSnapshot(
+      taskId.value,
+      replaySnapshots.value[clamped].epoch,
+    )
+    requestAnimationFrame(drawReplay)
+  } catch {
+    replayDetail.value = null
+  } finally {
+    replayLoading.value = false
+  }
+}
+
+async function openReplay(): Promise<void> {
+  if (!taskId.value) return
+  replayOpen.value = true
+  stopReplay()
+  try {
+    const result = await listSnapshots(taskId.value)
+    replaySnapshots.value = result.snapshots
+    if (result.snapshots.length === 0) {
+      replayDetail.value = null
+      return
+    }
+    await loadReplayEpoch(0)
+  } catch {
+    replaySnapshots.value = []
+  }
+}
+
+function toggleReplayPlay(): void {
+  if (replayTimer !== null) {
+    stopReplay()
+    return
+  }
+  replayTimer = window.setInterval(() => {
+    if (replayIndex.value >= replaySnapshots.value.length - 1) {
+      stopReplay()
+      return
+    }
+    void loadReplayEpoch(replayIndex.value + 1)
+  }, 700)
+}
+
+function onReplaySlider(event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value)
+  void loadReplayEpoch(value)
+}
+
+function closeReplay(): void {
+  stopReplay()
+  replayOpen.value = false
+}
+
+onBeforeUnmount(stopReplay)
 
 const renderedAnswer = computed(() => {
   if (!answer.value) return ''
@@ -577,6 +713,14 @@ function diagnoseTraining(): void {
           @click="loadCompression(compressSparsity)"
         >
           压缩对比
+        </AppButton>
+        <AppButton
+          variant="secondary"
+          size="sm"
+          :disabled="status !== 'completed'"
+          @click="openReplay"
+        >
+          快照回放
         </AppButton>
         <AppButton variant="ghost" size="sm" @click="router.push('/workspace')">
           返回工作台
@@ -1545,6 +1689,108 @@ function diagnoseTraining(): void {
               </p>
             </div>
           </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快照回放 -->
+    <div
+      v-if="replayOpen"
+      class="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      @click.self="closeReplay"
+    >
+      <div
+        class="flex w-full max-w-2xl flex-col overflow-hidden rounded-lg border"
+        :style="{
+          borderColor: 'var(--border-default)',
+          background: 'var(--bg-surface)',
+        }"
+      >
+        <header
+          class="flex shrink-0 items-center justify-between border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <div>
+            <h3 class="text-sm font-medium text-primary">快照回放</h3>
+            <p class="mt-0.5 text-[11px] text-muted">
+              恢复指定 epoch 的参数，重画该时刻的决策边界
+            </p>
+          </div>
+          <AppButton variant="ghost" size="sm" @click="closeReplay">
+            关闭
+          </AppButton>
+        </header>
+
+        <div class="flex gap-4 p-4">
+          <canvas
+            ref="replayCanvasRef"
+            class="shrink-0 rounded-md border"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          />
+
+          <div class="flex min-w-0 flex-1 flex-col justify-between gap-3">
+            <div class="text-[11px] text-muted">
+              <p v-if="replaySnapshots.length === 0">还没有可用快照</p>
+              <template v-else>
+                <p class="text-secondary">
+                  Epoch {{ replaySnapshots[replayIndex]?.epoch }} ·
+                  {{ replaySnapshots.length }} 个快照
+                </p>
+                <p class="mt-1 font-mono">
+                  准确率
+                  {{ ((replayDetail?.accuracy ?? 0) * 100).toFixed(1) }}%
+                </p>
+                <p class="mt-0.5 font-mono">
+                  loss {{ (replayDetail?.loss ?? 0).toFixed(4) }}
+                </p>
+              </template>
+            </div>
+
+            <div class="space-y-2">
+              <input
+                type="range"
+                class="w-full accent-[var(--brand-cyan)]"
+                :min="0"
+                :max="Math.max(replaySnapshots.length - 1, 0)"
+                :value="replayIndex"
+                :disabled="replaySnapshots.length === 0"
+                @input="onReplaySlider"
+              />
+              <div class="flex items-center gap-1.5">
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  :disabled="replayIndex <= 0"
+                  @click="loadReplayEpoch(replayIndex - 1)"
+                >
+                  ◀
+                </AppButton>
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  :disabled="replaySnapshots.length === 0"
+                  @click="toggleReplayPlay"
+                >
+                  {{ replayTimer === null ? '播放' : '暂停' }}
+                </AppButton>
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  :disabled="
+                    replayIndex >= replaySnapshots.length - 1 ||
+                    replaySnapshots.length === 0
+                  "
+                  @click="loadReplayEpoch(replayIndex + 1)"
+                >
+                  ▶
+                </AppButton>
+              </div>
+            </div>
+
+            <p class="text-[10px] leading-relaxed text-muted">
+              快照是参数副本，不是训练录像；训练时约每 1/20 轮保存一次。
+            </p>
+          </div>
         </div>
       </div>
     </div>
