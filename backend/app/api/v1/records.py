@@ -17,7 +17,7 @@ from app.schemas.common import Page
 from app.schemas.graph import ModelConfigIn
 from app.schemas.record import RecordCreate, RecordResponse
 from app.schemas.train import TrainStartResponse
-from app.services import curve_diagnosis, training
+from app.services import codegen, curve_diagnosis, training
 from app.services.graph_validation import validate_model_config
 
 router = APIRouter(prefix="/records", tags=["records"])
@@ -220,6 +220,31 @@ def rerun_record(
     )
 
     return TrainStartResponse(task_id=task.task_id, total_epochs=int(hyper["epochs"]))
+
+
+@router.get("/{record_id}/code", summary="生成等效 PyTorch 代码与行号映射")
+def get_record_code(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    record = db.get(TrainingRecord, record_id)
+    if record is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在")
+    _ensure_owned(record, current_user)
+
+    config = record.network_config or {}
+    if not config.get("nodes"):
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "CODEGEN_UNAVAILABLE",
+            "该记录没有保存拓扑（例如教学实验室记录），无法生成代码",
+        )
+
+    try:
+        return codegen.generate_code(config)
+    except ValueError as exc:
+        raise APIError(status.HTTP_400_BAD_REQUEST, "CODEGEN_FAILED", str(exc)) from exc
 
 
 @router.get("/{record_id}", response_model=RecordResponse, summary="训练记录详情")

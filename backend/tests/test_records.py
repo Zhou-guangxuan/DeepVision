@@ -235,3 +235,18 @@ def test_rerun_requires_dataset(
     resp = client.post(f"/api/records/{created['id']}/rerun", headers=auth_headers)
     assert resp.status_code == 400
     assert resp.json()["code"] == "RERUN_UNAVAILABLE"
+
+
+def test_record_code_generation(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    created = client.post(
+        "/api/records", json=SAMPLE_RECORD, headers=auth_headers
+    ).json()
+
+    resp = client.get(f"/api/records/{created['id']}/code", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "nn.Linear(8, 128)" in body["code"]
+    assert "nn.Linear(128, 2)" in body["code"]
+    assert body["lines"]["n2"]["definition"]

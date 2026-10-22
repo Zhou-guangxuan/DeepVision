@@ -371,6 +371,38 @@ def test_multi_input_feature_sum_must_match(
     assert "特征数之和" in events[-1]["reason"]
 
 
+def test_generate_code_with_line_mapping(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """等效代码生成：包含 Linear 定义与节点到行号的映射。"""
+    dataset = _upload(client, auth_headers).json()
+
+    started = client.post(
+        "/api/train",
+        json={
+            "dataset_id": dataset["id"],
+            "model_config": _config(),
+            "hyperparameters": {"epochs": 1, "batch_size": 8},
+        },
+        headers=auth_headers,
+    )
+    task_id = started.json()["task_id"]
+
+    resp = client.get(f"/api/train/{task_id}/code", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert "class GeneratedNet" in body["code"]
+    assert "nn.Linear(2, 8)" in body["code"]
+    assert "nn.Linear(8, 2)" in body["code"]
+
+    mapping = body["lines"]
+    assert mapping["n2"]["definition"]
+    assert mapping["n2"]["forward"]
+    assert 1 <= mapping["n2"]["definition"][0] <= body["total_lines"]
+    assert 1 <= mapping["n3"]["forward"][1] <= body["total_lines"]
+
+
 def test_rerun_record_reproduces_training(
     client: TestClient, auth_headers: dict[str, str], train_env
 ) -> None:

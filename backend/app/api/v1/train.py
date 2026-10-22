@@ -13,7 +13,7 @@ from app.models.dataset import Dataset
 from app.models.user import User
 from app.schemas.graph import ModelConfigIn
 from app.schemas.train import StopResponse, TrainRequest, TrainStartResponse
-from app.services import training
+from app.services import codegen, training
 from app.services.graph_validation import validate_model_config
 
 router = APIRouter(prefix="/train", tags=["train"])
@@ -72,3 +72,22 @@ def stop_training(
 
     training.request_stop(task)
     return StopResponse(task_id=task_id, stopped=True)
+
+
+@router.get("/{task_id}/code", summary="生成等效 PyTorch 代码与行号映射")
+def get_task_code(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = training.get_task(task_id)
+    if task is None:
+        raise APIError(
+            status.HTTP_404_NOT_FOUND, "TRAIN_TASK_NOT_FOUND", "训练任务不存在"
+        )
+    if task.user_id != current_user.id:
+        raise APIError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该任务")
+
+    try:
+        return codegen.generate_code(task.config)
+    except ValueError as exc:
+        raise APIError(status.HTTP_400_BAD_REQUEST, "CODEGEN_FAILED", str(exc)) from exc
