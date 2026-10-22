@@ -143,3 +143,48 @@ export interface LabDiagnosis {
   issues: LabDiagnosisIssue[]
   stats: Record<string, number>
 }
+
+export interface TuneTrial {
+  index: number
+  learning_rate: number
+  hidden_layers: number[]
+  activation: string
+  l2: number
+  dropout: number
+  batch_size: number
+  accuracy: number
+  loss: number
+  epochs_run: number
+  best_epoch: number
+  early_stopped: boolean
+}
+
+export interface TuneState {
+  tune_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped'
+  total: number
+  done: number
+  trials: TuneTrial[]
+  best: TuneTrial | null
+  error: string | null
+}
+
+/** 启动自动调参（随机搜索 + 早停） */
+export async function startTune(
+  config: LabConfig,
+  trials = 6,
+  epochs = 12,
+): Promise<TuneState> {
+  const { data } = await http.post<TuneState>('/api/lab/tune', {
+    config,
+    trials,
+    epochs,
+  })
+  return data
+}
+
+/** 查询自动调参进度 */
+export async function getTune(tuneId: string): Promise<TuneState> {
+  const { data } = await http.get<TuneState>(`/api/lab/tune/${tuneId}`)
+  return data
+}

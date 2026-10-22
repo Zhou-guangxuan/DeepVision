@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -7,15 +7,19 @@ import DOMPurify from 'dompurify'
 import { streamChat } from '@/api/ai'
 import {
   diagnoseLab,
+  getTune,
   pauseLab,
   resumeLab,
   startLab,
+  startTune,
   stopLab,
   type LabActivation,
   type LabConfig,
   type LabDiagnosis,
   type LabInit,
   type LabOptimizer,
+  type TuneState,
+  type TuneTrial,
 } from '@/api/lab'
 import LabDashboard from '@/components/lab/LabDashboard.vue'
 import LabInspector from '@/components/lab/LabInspector.vue'
@@ -112,6 +116,14 @@ const previousSummary = ref<{
   loss: number
   epochs: number
 } | null>(null)
+
+// ---- 自动调参（P2）----
+const tuneOpen = ref(false)
+const tuneState = ref<TuneState | null>(null)
+const tuneStarting = ref(false)
+const tuneTrials = ref(6)
+const tuneEpochs = ref(12)
+let tuneTimer: number | null = null
 
 const renderedAnswer = computed(() => {
   if (!answer.value) return ''
@@ -225,6 +237,57 @@ function successText(task: TeachingTask): string {
   }
   return '训练曲线出现预期异常（由诊断规则自动判定）'
 }
+
+function stopTunePolling(): void {
+  if (tuneTimer !== null) {
+    window.clearInterval(tuneTimer)
+    tuneTimer = null
+  }
+}
+
+async function startTuning(): Promise<void> {
+  if (tuneStarting.value) return
+  tuneStarting.value = true
+  try {
+    tuneState.value = await startTune(
+      config.value,
+      tuneTrials.value,
+      tuneEpochs.value,
+    )
+    tuneOpen.value = true
+    stopTunePolling()
+    tuneTimer = window.setInterval(async () => {
+      if (!tuneState.value) return
+      try {
+        const state = await getTune(tuneState.value.tune_id)
+        tuneState.value = state
+        if (state.status !== 'running' && state.status !== 'pending') {
+          stopTunePolling()
+        }
+      } catch {
+        stopTunePolling()
+      }
+    }, 800)
+  } catch {
+    // 拦截器已提示
+  } finally {
+    tuneStarting.value = false
+  }
+}
+
+function applyBestTrial(trial: TuneTrial): void {
+  learningRate.value = trial.learning_rate
+  hiddenLayers.value = [...trial.hidden_layers]
+  activation.value = trial.activation as LabActivation
+  l2.value = trial.l2
+  dropout.value = trial.dropout
+  batchSize.value = trial.batch_size
+  tuneOpen.value = false
+  resetToken.value += 1
+  toast.info('已应用最佳参数')
+}
+
+onBeforeUnmount(stopTunePolling)
 
 const layers = computed(() => [
   inputUnits.value,
@@ -471,6 +534,14 @@ function diagnoseTraining(): void {
         </span>
         <AppButton variant="secondary" size="sm" @click="taskPanelOpen = true">
           实验任务
+        </AppButton>
+        <AppButton
+          variant="secondary"
+          size="sm"
+          :loading="tuneStarting"
+          @click="startTuning"
+        >
+          自动调参
         </AppButton>
         <AppButton variant="ghost" size="sm" @click="router.push('/workspace')">
           返回工作台
@@ -1171,6 +1242,149 @@ function diagnoseTraining(): void {
           </AppButton>
           <AppButton size="sm" @click="closeTaskResult">关闭</AppButton>
         </footer>
+      </div>
+    </div>
+
+    <!-- 自动调参 -->
+    <div
+      v-if="tuneOpen"
+      class="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      @click.self="tuneOpen = false"
+    >
+      <div
+        class="flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border"
+        :style="{
+          borderColor: 'var(--border-default)',
+          background: 'var(--bg-surface)',
+        }"
+      >
+        <header
+          class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <div>
+            <h3 class="text-sm font-medium text-primary">
+              自动调参 · 随机搜索
+            </h3>
+            <p class="mt-0.5 text-[11px] text-muted">
+              空间：学习率 1e-3–1e-1 · 隐藏层 5 种 · 激活 relu/tanh · l2 ·
+              dropout · batch；连续 4 轮未提升即早停
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-[11px] text-muted">
+              试验
+              <input
+                v-model.number="tuneTrials"
+                type="number"
+                min="1"
+                max="12"
+                class="ml-1 w-14 rounded-sm border bg-transparent px-1.5 py-0.5 text-center text-secondary"
+                :style="{ borderColor: 'var(--border-default)' }"
+              />
+            </label>
+            <label class="text-[11px] text-muted">
+              轮数
+              <input
+                v-model.number="tuneEpochs"
+                type="number"
+                min="2"
+                max="60"
+                class="ml-1 w-14 rounded-sm border bg-transparent px-1.5 py-0.5 text-center text-secondary"
+                :style="{ borderColor: 'var(--border-default)' }"
+              />
+            </label>
+            <AppButton size="sm" :loading="tuneStarting" @click="startTuning">
+              重新搜索
+            </AppButton>
+            <AppButton variant="ghost" size="sm" @click="tuneOpen = false">
+              关闭
+            </AppButton>
+          </div>
+        </header>
+
+        <div class="min-h-0 flex-1 overflow-auto">
+          <p v-if="!tuneState" class="px-4 py-4 text-xs text-muted">准备中…</p>
+          <template v-else>
+            <p class="px-4 py-2 text-[11px] text-muted">
+              状态 {{ tuneState.status }} · 已完成 {{ tuneState.done }}/{{
+                tuneState.total
+              }}
+              组
+            </p>
+            <table class="w-full text-left text-[11px]">
+              <thead :style="{ background: 'var(--bg-elevated)' }">
+                <tr class="text-muted">
+                  <th class="px-4 py-2">#</th>
+                  <th class="px-3 py-2">学习率</th>
+                  <th class="px-3 py-2">隐藏层</th>
+                  <th class="px-3 py-2">激活</th>
+                  <th class="px-3 py-2">l2</th>
+                  <th class="px-3 py-2">batch</th>
+                  <th class="px-3 py-2">准确率</th>
+                  <th class="px-4 py-2">轮次</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="trial in tuneState.trials"
+                  :key="trial.index"
+                  class="border-t"
+                  :style="{
+                    borderColor: 'var(--border-subtle)',
+                    background:
+                      tuneState.best?.index === trial.index
+                        ? 'rgba(34, 211, 238, 0.08)'
+                        : undefined,
+                  }"
+                >
+                  <td class="px-4 py-1.5 text-muted">{{ trial.index }}</td>
+                  <td class="px-3 py-1.5 font-mono text-secondary">
+                    {{ trial.learning_rate }}
+                  </td>
+                  <td class="px-3 py-1.5 font-mono text-secondary">
+                    {{ trial.hidden_layers.join('→') }}
+                  </td>
+                  <td class="px-3 py-1.5 text-secondary">
+                    {{ trial.activation }}
+                  </td>
+                  <td class="px-3 py-1.5 font-mono text-muted">
+                    {{ trial.l2 }}
+                  </td>
+                  <td class="px-3 py-1.5 font-mono text-muted">
+                    {{ trial.batch_size }}
+                  </td>
+                  <td class="px-3 py-1.5 font-mono text-primary">
+                    {{ (trial.accuracy * 100).toFixed(1) }}%
+                  </td>
+                  <td class="px-4 py-1.5 text-muted">
+                    {{ trial.epochs_run }}
+                    <span v-if="trial.early_stopped" class="text-[10px]">
+                      （早停）
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div
+              v-if="tuneState.best"
+              class="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3"
+              :style="{ borderColor: 'var(--border-subtle)' }"
+            >
+              <span class="text-[11px] text-secondary">
+                最佳：准确率
+                {{ (tuneState.best.accuracy * 100).toFixed(1) }}% · lr
+                {{ tuneState.best.learning_rate }} ·
+                {{ tuneState.best.hidden_layers.join('→') }} ·
+                {{ tuneState.best.activation }}
+              </span>
+              <AppButton size="sm" @click="applyBestTrial(tuneState.best)">
+                应用最佳参数
+              </AppButton>
+            </div>
+          </template>
+        </div>
       </div>
     </div>
   </div>
