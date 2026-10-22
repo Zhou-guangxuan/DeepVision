@@ -250,6 +250,13 @@ function onTrainingStarted(taskId: string): void {
         >
           历史记录
         </AppButton>
+        <AppButton
+          variant="secondary"
+          size="sm"
+          @click="router.push('/images')"
+        >
+          图像实验
+        </AppButton>
         <AppButton size="sm" @click="showTrainingDialog = true">
           开始训练
         </AppButton>

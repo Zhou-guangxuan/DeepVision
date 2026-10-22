@@ -30,6 +30,18 @@ export async function stopTraining(taskId: string): Promise<void> {
   await http.post(`/api/train/${taskId}/stop`)
 }
 
+/** 图像实验线：固定小 CNN 训练 */
+export async function startImageTraining(
+  datasetId: number,
+  hyperparameters: Hyperparameters,
+): Promise<StartTrainingResponse> {
+  const { data } = await http.post<StartTrainingResponse>('/api/train/image', {
+    dataset_id: datasetId,
+    hyperparameters,
+  })
+  return data
+}
+
 export interface CodeLineRange {
   definition: number[]
   forward: number[]

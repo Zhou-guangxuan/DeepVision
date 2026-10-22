@@ -41,6 +41,11 @@ const router = createRouter({
       component: () => import('@/views/HistoryView.vue'),
     },
     {
+      path: '/images',
+      name: 'images',
+      component: () => import('@/views/ImageView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/workspace',
     },

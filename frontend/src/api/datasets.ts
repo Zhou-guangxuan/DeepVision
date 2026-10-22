@@ -16,11 +16,16 @@ export interface DatasetStats {
   features: FeatureStats[]
   target: FeatureStats | null
   target_distribution: Record<string, number>
+  classes?: string[]
+  size?: number | null
+  samples?: number | null
+  synthetic?: string | null
 }
 
 export interface DatasetDetail {
   id: number
   name: string
+  kind: string
   columns_meta: DatasetColumn[]
   target_column: string | null
   missing_strategy: string
@@ -33,6 +38,7 @@ export interface DatasetDetail {
 export interface DatasetSummary {
   id: number
   name: string
+  kind: string
   target_column: string | null
   missing_strategy: string
   sample_count: number
@@ -60,6 +66,39 @@ export async function listDatasets(
 ): Promise<Page<DatasetSummary>> {
   const { data } = await http.get<Page<DatasetSummary>>('/api/datasets', {
     params: { page, page_size: pageSize },
+  })
+  return data
+}
+
+/** 生成内置合成图像数据集（圆 / 方） */
+export async function createImageDataset(
+  samples = 1200,
+  size = 16,
+): Promise<DatasetDetail> {
+  const { data } = await http.post<DatasetDetail>('/api/datasets/image', null, {
+    params: { samples, size },
+  })
+  return data
+}
+
+export interface ImageSample {
+  label: number
+  pixels: number[][]
+}
+
+export interface ImagePreview {
+  size: number
+  classes: string[]
+  samples: ImageSample[]
+}
+
+/** 图像数据集样本预览 */
+export async function previewImageDataset(
+  id: number,
+  count = 8,
+): Promise<ImagePreview> {
+  const { data } = await http.get<ImagePreview>(`/api/datasets/${id}/preview`, {
+    params: { count },
   })
   return data
 }
