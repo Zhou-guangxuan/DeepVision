@@ -64,11 +64,50 @@ interface GraphProfileNode {
   out_dim: number
   dtype: string
   param_count: number
+  weight_bytes: number
+  activation_bytes: number
   time_ms: number
 }
 
 /** 计算图剖析：训练开始时由后端推送一次 */
 const graphProfile = ref<GraphProfileNode[]>([])
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 / 1024).toFixed(2)} MB`
+}
+
+/** 归一化耗时，用于拓扑图热力叠加 */
+const heatByNode = computed(() => {
+  const max = Math.max(
+    ...graphProfile.value.map((node) => node.time_ms),
+    0.0001,
+  )
+  const map: Record<string, number> = {}
+  for (const node of graphProfile.value) {
+    map[node.node_id] = node.time_ms / max
+  }
+  return map
+})
+
+const profileTitles = computed(() => {
+  const map: Record<string, string> = {}
+  for (const node of graphProfile.value) {
+    map[node.node_id] =
+      `${node.node_id} · ${node.in_dim}→${node.out_dim} · ` +
+      `${node.time_ms.toFixed(3)} ms · 权重 ${formatBytes(node.weight_bytes)} · ` +
+      `激活 ${formatBytes(node.activation_bytes)}`
+  }
+  return map
+})
+
+const totalWeightBytes = computed(() =>
+  graphProfile.value.reduce((sum, node) => sum + node.weight_bytes, 0),
+)
+const totalActivationBytes = computed(() =>
+  graphProfile.value.reduce((sum, node) => sum + node.activation_bytes, 0),
+)
 
 // 代码查看器
 const codeOpen = ref(false)
@@ -555,6 +594,8 @@ onBeforeUnmount(() => {
               :nodes="graph.nodes"
               :edges="graph.edges"
               :active="status === 'running'"
+              :heat="heatByNode"
+              :titles="profileTitles"
             />
           </div>
         </AppCard>
@@ -609,6 +650,7 @@ onBeforeUnmount(() => {
                 <th class="px-3 py-2">输入 → 输出</th>
                 <th class="px-3 py-2">dtype</th>
                 <th class="px-3 py-2">参数</th>
+                <th class="px-3 py-2">内存</th>
                 <th class="px-3 py-2">耗时</th>
                 <th class="px-4 py-2">占比</th>
               </tr>
@@ -636,6 +678,12 @@ onBeforeUnmount(() => {
                 <td class="px-3 py-1.5 font-mono text-secondary">
                   {{ node.param_count }}
                 </td>
+                <td
+                  class="px-3 py-1.5 font-mono text-secondary"
+                  :title="`权重 ${formatBytes(node.weight_bytes)} + 激活 ${formatBytes(node.activation_bytes)}`"
+                >
+                  {{ formatBytes(node.weight_bytes + node.activation_bytes) }}
+                </td>
                 <td class="px-3 py-1.5 font-mono text-primary">
                   {{ node.time_ms.toFixed(3) }} ms
                 </td>
@@ -656,6 +704,19 @@ onBeforeUnmount(() => {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div
+          class="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-[10px] text-muted"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <span>
+            合计：权重 {{ formatBytes(totalWeightBytes) }} · 单批激活
+            {{ formatBytes(totalActivationBytes) }}
+          </span>
+          <span
+            >激活按单批输入估算，不含优化器状态；拓扑节点颜色深浅 =
+            耗时占比</span
+          >
         </div>
       </AppCard>
 

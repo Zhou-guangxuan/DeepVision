@@ -13,6 +13,10 @@ const props = defineProps<{
   nodes: GraphNode[]
   edges: GraphEdge[]
   active: boolean
+  /** node_id → 0..1 的归一化耗时，提供时节点按热力着色 */
+  heat?: Record<string, number>
+  /** node_id → 悬停提示文本 */
+  titles?: Record<string, string>
 }>()
 
 const VIEW_WIDTH = 320
@@ -74,6 +78,14 @@ const nodeRects = computed(() =>
 
 const nodeMap = computed(() => new Map(props.nodes.map((n) => [n.id, n])))
 
+/** 热力着色：耗时占比越高，青色越深 */
+function heatFill(nodeId: string): string {
+  const value = props.heat?.[nodeId]
+  if (value === undefined) return 'rgba(17, 24, 39, 0.9)'
+  const alpha = 0.12 + 0.6 * Math.min(1, Math.max(0, value))
+  return `rgba(34, 211, 238, ${alpha.toFixed(3)})`
+}
+
 const edgePaths = computed(() =>
   props.edges
     .map((edge: GraphEdge) => {
@@ -127,10 +139,12 @@ const edgePaths = computed(() =>
           :width="node.width"
           :height="node.height"
           rx="4"
-          fill="rgba(17, 24, 39, 0.9)"
+          :fill="heatFill(node.id)"
           :stroke="node.color"
           stroke-width="1.2"
-        />
+        >
+          <title>{{ titles?.[node.id] ?? node.id }}</title>
+        </rect>
       </g>
     </svg>
   </div>
