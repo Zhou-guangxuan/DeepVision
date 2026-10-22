@@ -286,6 +286,12 @@ cd backend
 - **快照回放**：训练时约每 1/20 轮保存一次参数，训练后可拖动进度条或播放，回看任意 epoch 的决策边界与准确率
 - **Integrated Gradients 归因**：观察弹窗「归因」标签，按特征展示对当前预测的贡献（正值 / 负值分色），可切换样本
 - **图像实验线**（`/images`）：内置合成「圆形 / 方形」16×16 数据集，样本预览 + 固定小 CNN 训练；训练页展示混淆矩阵与样本预测网格；与表格线共用训练记录，不做跨模态融合
+
+## 跨设备与数据位置
+
+- 数据集、训练记录、实验室结果都保存在服务端（SQLite），同一账号换设备登录即可看到
+- **画布草稿**同时写入服务端（`/api/workspace/draft`）与 localStorage：进工作台优先读服务端，断网时回退本地
+- 不同用户之间**不共享**数据；跨用户协作与教师端未实现
 - **对比实验**：任务结果弹窗可「再跑一组对比」，并排显示两组的准确率与 loss（曲线级对比在 `/history`）
 - 助教回答支持 **Markdown 渲染**，引擎可选择 自动 / 强制大模型 / 离线规则
 - 实验室训练结果写入 `training_records`（`source = lab`），与第一阶段历史共用一张表
@@ -315,6 +321,8 @@ cd backend
 | GET | `/api/datasets/{id}/preview` | 图像样本预览 | 是 |
 | POST | `/api/train/image` | 图像分类训练（固定小 CNN） | 是 |
 | GET | `/api/records/{id}/image-eval` | 图像训练混淆矩阵与样本预测 | 是 |
+| GET | `/api/workspace/draft` | 读取画布草稿（跨设备恢复） | 是 |
+| PUT | `/api/workspace/draft` | 保存画布草稿 | 是 |
 | DELETE | `/api/records/{id}` | 删除记录 | 是 |
 | POST | `/api/graph/validate` | 校验网络拓扑结构 | 是 |
 | POST | `/api/datasets` | 上传并解析 CSV 数据集 | 是 |
