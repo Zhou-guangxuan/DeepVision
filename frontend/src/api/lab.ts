@@ -188,3 +188,48 @@ export async function getTune(tuneId: string): Promise<TuneState> {
   const { data } = await http.get<TuneState>(`/api/lab/tune/${tuneId}`)
   return data
 }
+
+export interface BaselineCase {
+  params: number
+  nonzero: number
+  size_bytes: number
+  weight_bytes: number
+  accuracy: number
+}
+
+export interface PrunedCase {
+  sparsity: number
+  params: number
+  nonzero: number
+  size_bytes: number
+  weight_bytes: number
+  sparse_bytes: number
+  accuracy: number
+}
+
+export interface QuantizedCase {
+  dtype: string
+  size_bytes: number
+  weight_bytes: number
+  compression_ratio: number
+  accuracy: number
+}
+
+export interface CompressionResult {
+  baseline: BaselineCase
+  pruned: PrunedCase
+  quantized: QuantizedCase
+  samples: number
+}
+
+/** 剪枝 / 量化压缩对比 */
+export async function compressLab(
+  taskId: string,
+  sparsity = 0.3,
+): Promise<CompressionResult> {
+  const { data } = await http.get<CompressionResult>(
+    `/api/lab/${taskId}/compression`,
+    { params: { sparsity } },
+  )
+  return data
+}

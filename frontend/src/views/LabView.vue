@@ -6,6 +6,7 @@ import DOMPurify from 'dompurify'
 
 import { streamChat } from '@/api/ai'
 import {
+  compressLab,
   diagnoseLab,
   getTune,
   pauseLab,
@@ -13,6 +14,7 @@ import {
   startLab,
   startTune,
   stopLab,
+  type CompressionResult,
   type LabActivation,
   type LabConfig,
   type LabDiagnosis,
@@ -124,6 +126,31 @@ const tuneStarting = ref(false)
 const tuneTrials = ref(6)
 const tuneEpochs = ref(12)
 let tuneTimer: number | null = null
+
+// ---- 剪枝 / 量化（P2）----
+const compressOpen = ref(false)
+const compressData = ref<CompressionResult | null>(null)
+const compressLoading = ref(false)
+const compressSparsity = ref(0.3)
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  return `${(value / 1024).toFixed(1)} KB`
+}
+
+async function loadCompression(sparsity: number): Promise<void> {
+  if (!taskId.value) return
+  compressSparsity.value = sparsity
+  compressOpen.value = true
+  compressLoading.value = true
+  try {
+    compressData.value = await compressLab(taskId.value, sparsity)
+  } catch {
+    compressData.value = null
+  } finally {
+    compressLoading.value = false
+  }
+}
 
 const renderedAnswer = computed(() => {
   if (!answer.value) return ''
@@ -542,6 +569,14 @@ function diagnoseTraining(): void {
           @click="startTuning"
         >
           自动调参
+        </AppButton>
+        <AppButton
+          variant="secondary"
+          size="sm"
+          :disabled="status !== 'completed'"
+          @click="loadCompression(compressSparsity)"
+        >
+          压缩对比
         </AppButton>
         <AppButton variant="ghost" size="sm" @click="router.push('/workspace')">
           返回工作台
@@ -1382,6 +1417,132 @@ function diagnoseTraining(): void {
               <AppButton size="sm" @click="applyBestTrial(tuneState.best)">
                 应用最佳参数
               </AppButton>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 剪枝 / 量化对比 -->
+    <div
+      v-if="compressOpen"
+      class="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      @click.self="compressOpen = false"
+    >
+      <div
+        class="flex max-h-[86vh] w-full max-w-xl flex-col overflow-hidden rounded-lg border"
+        :style="{
+          borderColor: 'var(--border-default)',
+          background: 'var(--bg-surface)',
+        }"
+      >
+        <header
+          class="flex shrink-0 items-center justify-between border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <div>
+            <h3 class="text-sm font-medium text-primary">剪枝 / 量化对比</h3>
+            <p class="mt-0.5 text-[11px] text-muted">
+              同一批验证样本上的准确率；体积为权重本身字节数
+            </p>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <AppButton
+              v-for="ratio in [0.3, 0.5, 0.7]"
+              :key="ratio"
+              :variant="compressSparsity === ratio ? 'primary' : 'secondary'"
+              size="sm"
+              @click="loadCompression(ratio)"
+            >
+              {{ ratio * 100 }}%
+            </AppButton>
+            <AppButton variant="ghost" size="sm" @click="compressOpen = false">
+              关闭
+            </AppButton>
+          </div>
+        </header>
+
+        <div class="min-h-0 flex-1 overflow-auto">
+          <p v-if="compressLoading" class="px-4 py-4 text-xs text-muted">
+            压缩与评估中…
+          </p>
+          <template v-else-if="compressData">
+            <table class="w-full text-left text-[11px]">
+              <thead :style="{ background: 'var(--bg-elevated)' }">
+                <tr class="text-muted">
+                  <th class="px-4 py-2">方案</th>
+                  <th class="px-3 py-2">参数量</th>
+                  <th class="px-3 py-2">非零参数</th>
+                  <th class="px-3 py-2">权重体积</th>
+                  <th class="px-4 py-2">准确率</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-t"
+                  :style="{ borderColor: 'var(--border-subtle)' }"
+                >
+                  <td class="px-4 py-2 text-secondary">原始（float32）</td>
+                  <td class="px-3 py-2 font-mono text-secondary">
+                    {{ compressData.baseline.params }}
+                  </td>
+                  <td class="px-3 py-2 font-mono text-secondary">
+                    {{ compressData.baseline.nonzero }}
+                  </td>
+                  <td class="px-3 py-2 font-mono text-secondary">
+                    {{ formatBytes(compressData.baseline.weight_bytes) }}
+                  </td>
+                  <td class="px-4 py-2 font-mono text-primary">
+                    {{ (compressData.baseline.accuracy * 100).toFixed(1) }}%
+                  </td>
+                </tr>
+                <tr
+                  class="border-t"
+                  :style="{ borderColor: 'var(--border-subtle)' }"
+                >
+                  <td class="px-4 py-2 text-secondary">
+                    剪枝 {{ (compressData.pruned.sparsity * 100).toFixed(0) }}%
+                  </td>
+                  <td class="px-3 py-2 font-mono text-secondary">
+                    {{ compressData.pruned.params }}
+                  </td>
+                  <td class="px-3 py-2 font-mono text-secondary">
+                    {{ compressData.pruned.nonzero }}
+                  </td>
+                  <td class="px-3 py-2 font-mono text-secondary">
+                    {{ formatBytes(compressData.pruned.weight_bytes) }}
+                    <span class="text-muted">（稠密不变）</span>
+                  </td>
+                  <td class="px-4 py-2 font-mono text-primary">
+                    {{ (compressData.pruned.accuracy * 100).toFixed(1) }}%
+                  </td>
+                </tr>
+                <tr
+                  class="border-t"
+                  :style="{ borderColor: 'var(--border-subtle)' }"
+                >
+                  <td class="px-4 py-2 text-secondary">动态量化（int8）</td>
+                  <td class="px-3 py-2 font-mono text-muted">—</td>
+                  <td class="px-3 py-2 font-mono text-muted">—</td>
+                  <td class="px-3 py-2 font-mono text-secondary">
+                    {{ formatBytes(compressData.quantized.weight_bytes) }}
+                  </td>
+                  <td class="px-4 py-2 font-mono text-primary">
+                    {{ (compressData.quantized.accuracy * 100).toFixed(1) }}%
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="space-y-1 px-4 py-3 text-[11px] text-muted">
+              <p>
+                量化压缩比
+                {{ compressData.quantized.compression_ratio }}×（按权重字节计）·
+                评估样本 {{ compressData.samples }} 条
+              </p>
+              <p>
+                注意：剪枝只把权重置零，稠密存储体积不变；要真正省空间需要稀疏格式。
+              </p>
             </div>
           </template>
         </div>
