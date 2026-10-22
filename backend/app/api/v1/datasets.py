@@ -2,6 +2,7 @@
 
 import json
 
+import numpy as np
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ from app.models.dataset import Dataset
 from app.models.user import User
 from app.schemas.common import Page
 from app.schemas.dataset import DatasetResponse, DatasetSummary
-from app.services import csv_service
+from app.services import csv_service, image_dataset
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -100,6 +101,79 @@ async def create_dataset(
     db.refresh(dataset)
 
     return DatasetResponse.model_validate(dataset)
+
+
+@router.post(
+    "/image",
+    response_model=DatasetResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="生成内置合成图像数据集",
+)
+def create_image_dataset(
+    samples: int = Query(default=1200, ge=200, le=4000),
+    size: int = Query(default=16, ge=8, le=32),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DatasetResponse:
+    settings = get_settings()
+    x, y = image_dataset.generate(samples=samples, size=size)
+    path = image_dataset.save(settings.storage_dir, current_user.id, x, y)
+
+    dataset = Dataset(
+        user_id=current_user.id,
+        name=f"内置图形 {size}×{size}",
+        columns_meta=[],
+        feature_columns=[],
+        target_column="label",
+        missing_strategy="mean",
+        stats={
+            "classes": image_dataset.CLASSES,
+            "size": size,
+            "samples": int(len(x)),
+            "synthetic": "shapes",
+        },
+        kind="image",
+        sample_count=int(len(x)),
+        feature_count=size * size,
+        file_path=path,
+    )
+    db.add(dataset)
+    db.commit()
+    db.refresh(dataset)
+    return DatasetResponse.model_validate(dataset)
+
+
+@router.get("/{dataset_id}/preview", summary="图像数据集样本预览")
+def preview_image_dataset(
+    dataset_id: int,
+    count: int = Query(default=8, ge=1, le=16),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在")
+    if dataset.user_id != current_user.id:
+        raise APIError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该数据集")
+    if dataset.kind != "image":
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST, "NOT_IMAGE_DATASET", "该数据集不是图像数据集"
+        )
+
+    x, y = image_dataset.load(dataset.file_path)
+    indices = np.linspace(0, len(x) - 1, num=min(count, len(x)), dtype=int)
+
+    return {
+        "size": int(x.shape[2]),
+        "classes": dataset.stats.get("classes", []),
+        "samples": [
+            {
+                "label": int(y[index]),
+                "pixels": (x[index, 0] * 255).round().astype(int).tolist(),
+            }
+            for index in indices
+        ],
+    }
 
 
 @router.get("", response_model=Page[DatasetSummary], summary="数据集列表")

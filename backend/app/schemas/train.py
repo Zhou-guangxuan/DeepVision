@@ -22,6 +22,11 @@ class TrainStartResponse(BaseModel):
     total_epochs: int
 
 
+class ImageTrainRequest(BaseModel):
+    dataset_id: int
+    hyperparameters: Hyperparameters = Field(default_factory=Hyperparameters)
+
+
 class StopResponse(BaseModel):
     task_id: str
     stopped: bool

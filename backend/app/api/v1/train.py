@@ -12,7 +12,12 @@ from app.db.session import get_db
 from app.models.dataset import Dataset
 from app.models.user import User
 from app.schemas.graph import ModelConfigIn
-from app.schemas.train import StopResponse, TrainRequest, TrainStartResponse
+from app.schemas.train import (
+    ImageTrainRequest,
+    StopResponse,
+    TrainRequest,
+    TrainStartResponse,
+)
 from app.services import codegen, training
 from app.services.graph_validation import validate_model_config
 
@@ -54,6 +59,38 @@ def create_training(
         hyper=hyper,
     )
 
+    return TrainStartResponse(task_id=task.task_id, total_epochs=int(hyper["epochs"]))
+
+
+@router.post(
+    "/image",
+    response_model=TrainStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="创建图像分类训练任务（固定小 CNN）",
+)
+def create_image_training(
+    payload: ImageTrainRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TrainStartResponse:
+    dataset = db.get(Dataset, payload.dataset_id)
+    if dataset is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在")
+    if dataset.user_id != current_user.id:
+        raise APIError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该数据集")
+    if dataset.kind != "image":
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "NOT_IMAGE_DATASET",
+            "该数据集不是图像数据集",
+        )
+
+    hyper = payload.hyperparameters.model_dump()
+    task = training.create_image_task(
+        user_id=current_user.id,
+        dataset_id=payload.dataset_id,
+        hyper=hyper,
+    )
     return TrainStartResponse(task_id=task.task_id, total_epochs=int(hyper["epochs"]))
 
 

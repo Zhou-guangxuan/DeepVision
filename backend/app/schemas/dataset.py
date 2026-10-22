@@ -21,6 +21,11 @@ class DatasetStats(BaseModel):
     features: list[FeatureStats] = Field(default_factory=list)
     target: FeatureStats | None = None
     target_distribution: dict[str, int] = Field(default_factory=dict)
+    # 图像数据集（kind="image"）携带的额外信息
+    classes: list[str] = Field(default_factory=list)
+    size: int | None = None
+    samples: int | None = None
+    synthetic: str | None = None
 
 
 class DatasetResponse(BaseModel):
@@ -28,6 +33,7 @@ class DatasetResponse(BaseModel):
 
     id: int
     name: str
+    kind: str = "tabular"
     columns_meta: list[ColumnMeta]
     target_column: str | None
     missing_strategy: str
@@ -44,6 +50,7 @@ class DatasetSummary(BaseModel):
 
     id: int
     name: str
+    kind: str = "tabular"
     target_column: str | None
     missing_strategy: str
     sample_count: int

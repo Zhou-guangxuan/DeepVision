@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -28,10 +29,34 @@ from app.models.record import (
     STATUS_SUCCESS,
     TrainingRecord,
 )
+from app.services import image_dataset
 from app.services.dag_model import build_dag_net
 from app.services.preprocessing import prepare_dataset
 
 MAX_HISTORY_EVENTS = 2000
+
+
+class ImageCNN(nn.Module):
+    """图像实验线的固定小卷积网络（两条卷积 + 池化 + 全连接）。"""
+
+    def __init__(self, num_classes: int, size: int) -> None:
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(8, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        reduced = max(1, size // 4)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(16 * reduced * reduced, num_classes),
+        )
+
+    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+        return self.classifier(self.features(tensor))
 
 
 @dataclass
@@ -43,6 +68,8 @@ class TrainingTask:
     plan: dict
     hyper: dict
     total_epochs: int
+    # graph：按拓扑执行；image：固定 CNN 的图像实验线
+    mode: str = "graph"
     status: str = "pending"
     history: list[dict] = field(default_factory=list)
     lifecycle: list[dict] = field(default_factory=list)
@@ -80,6 +107,22 @@ def create_task(
     return task
 
 
+def create_image_task(*, user_id: int, dataset_id: int, hyper: dict) -> TrainingTask:
+    task = TrainingTask(
+        task_id=uuid4().hex,
+        user_id=user_id,
+        dataset_id=dataset_id,
+        config={"kind": "image"},
+        plan={},
+        hyper=hyper,
+        total_epochs=int(hyper.get("epochs", 20)),
+        mode="image",
+    )
+    with _LOCK:
+        _TASKS[task.task_id] = task
+    return task
+
+
 def get_task(task_id: str) -> TrainingTask | None:
     with _LOCK:
         return _TASKS.get(task_id)
@@ -106,7 +149,8 @@ def start(task: TrainingTask) -> None:
     if task.thread is not None:
         return
     task.status = "running"
-    task.thread = threading.Thread(target=_run_training, args=(task,), daemon=True)
+    target = _run_image_training if task.mode == "image" else _run_training
+    task.thread = threading.Thread(target=target, args=(task,), daemon=True)
     task.thread.start()
 
 
@@ -474,3 +518,155 @@ def _run_training(task: TrainingTask) -> None:
                     "record_id": record_id,
                 },
             )
+
+
+def _run_image_training(task: TrainingTask) -> None:
+    """图像实验线：内置合成数据集 + 固定小 CNN。
+
+    事件结构与表格训练保持一致，前端训练页无需区分来源。
+    """
+    session = SessionLocal()
+    started = time.perf_counter()
+    metrics: dict = {}
+    failure: str | None = None
+    last_epoch = 0
+    result_status = STATUS_FAILED
+
+    try:
+        dataset = session.get(Dataset, task.dataset_id)
+        if dataset is None:
+            raise RuntimeError("数据集不存在")
+        if dataset.user_id != task.user_id:
+            raise RuntimeError("无权访问该数据集")
+        if dataset.kind != "image":
+            raise RuntimeError("该数据集不是图像数据集")
+
+        x, y = image_dataset.load(dataset.file_path)
+        num_classes = len(dataset.stats.get("classes", [])) or 2
+        size = int(dataset.stats.get("size", x.shape[2]))
+
+        seed = int(task.hyper.get("seed", 42))
+        torch.manual_seed(seed)
+
+        rng = np.random.default_rng(42)
+        order = rng.permutation(len(x))
+        split = int(len(x) * 0.8)
+        train_index, val_index = order[:split], order[split:]
+
+        x_train = torch.from_numpy(x[train_index])
+        y_train = torch.from_numpy(y[train_index])
+        x_val = torch.from_numpy(x[val_index])
+        y_val = torch.from_numpy(y[val_index])
+
+        model = ImageCNN(num_classes, size)
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=float(task.hyper.get("learning_rate", 0.001)),
+        )
+        loss_fn = nn.CrossEntropyLoss()
+
+        batch_size = int(task.hyper.get("batch_size", 32))
+        epochs = int(task.hyper.get("epochs", task.total_epochs))
+
+        _emit(
+            task,
+            {
+                "type": "started",
+                "task_id": task.task_id,
+                "total_epochs": epochs,
+                "input_dim": size * size,
+                "input_layers": 1,
+                "output_layers": 1,
+                "task": "classification",
+                "classes": list(dataset.stats.get("classes", [])),
+                "mode": "image",
+            },
+        )
+
+        for epoch in range(1, epochs + 1):
+            if task.stop_event.is_set():
+                result_status = STATUS_INTERRUPTED
+                break
+
+            model.train()
+            permutation = torch.randperm(len(x_train))
+            total_loss = 0.0
+            batches = 0
+
+            for offset in range(0, len(x_train), batch_size):
+                indices = permutation[offset : offset + batch_size]
+                optimizer.zero_grad()
+                loss = loss_fn(model(x_train[indices]), y_train[indices])
+                loss.backward()
+                optimizer.step()
+                total_loss += float(loss.item())
+                batches += 1
+
+            model.eval()
+            with torch.no_grad():
+                logits = model(x_val)
+                val_loss = float(loss_fn(logits, y_val).item())
+                accuracy = float((logits.argmax(dim=1) == y_val).float().mean().item())
+
+            last_epoch = epoch
+            _emit(
+                task,
+                {
+                    "type": "epoch",
+                    "epoch": epoch,
+                    "total_epochs": epochs,
+                    "train_loss": round(total_loss / max(batches, 1), 6),
+                    "val_loss": round(val_loss, 6),
+                    "accuracy": round(accuracy, 6),
+                    "grad_norm": 0.0,
+                    "layer_stats": [],
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                },
+            )
+
+        if result_status != STATUS_INTERRUPTED:
+            result_status = STATUS_SUCCESS
+        metrics = {
+            "val_loss": round(val_loss, 6) if last_epoch else None,
+            "accuracy": round(accuracy, 6) if last_epoch else None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        failure = str(exc)
+        result_status = STATUS_FAILED
+    finally:
+        duration = round(time.perf_counter() - started, 3)
+        try:
+            record = _finalize(
+                session,
+                task,
+                result_status,
+                metrics,
+                None,
+                failure,
+                duration,
+                last_epoch,
+            )
+            record_id = record.id
+        except Exception as exc:  # noqa: BLE001
+            record_id = None
+            failure = failure or str(exc)
+        finally:
+            session.close()
+
+        task.status = "success" if result_status == STATUS_SUCCESS else result_status
+
+        if result_status == STATUS_SUCCESS:
+            _emit(
+                task,
+                {
+                    "type": "completed",
+                    "final_loss": metrics.get("val_loss"),
+                    "final_accuracy": metrics.get("accuracy"),
+                    "record_id": record_id,
+                    "epochs": last_epoch,
+                },
+            )
+        elif result_status == STATUS_INTERRUPTED:
+            _emit(task, {"type": "stopped", "epoch": last_epoch})
+        else:
+            _emit(task, {"type": "failed", "reason": failure or "训练失败"})

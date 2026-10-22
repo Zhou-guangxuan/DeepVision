@@ -36,6 +36,10 @@ class Dataset(Base):
         String(16), nullable=False, default="mean"
     )
     stats: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # tabular：CSV 表格；image：内置合成图像
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="tabular", server_default="tabular"
+    )
     sample_count: Mapped[int] = mapped_column(nullable=False, default=0)
     feature_count: Mapped[int] = mapped_column(nullable=False, default=0)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)
