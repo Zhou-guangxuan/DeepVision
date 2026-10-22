@@ -6,7 +6,14 @@ export type TrainingSocketState =
   'connecting' | 'open' | 'reconnecting' | 'closed'
 
 export interface TrainingEvent {
-  type: 'started' | 'epoch' | 'completed' | 'failed' | 'stopped' | 'pong'
+  type:
+    | 'started'
+    | 'epoch'
+    | 'graph_profile'
+    | 'completed'
+    | 'failed'
+    | 'stopped'
+    | 'pong'
   [key: string]: unknown
 }
 

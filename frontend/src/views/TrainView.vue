@@ -52,9 +52,23 @@ const trainLossSeries = ref<(number | null)[]>([])
 const valLossSeries = ref<(number | null)[]>([])
 const accuracySeries = ref<(number | null)[]>([])
 
-/** 逐层权重范数：node_id → 每个 epoch 的 weight_norm */
-const layerHistory = ref<Record<string, number[]>>({})
+/** 逐层权重范数 / 标准差：node_id → 每个 epoch 的统计量 */
+const layerHistory = ref<Record<string, { norm: number; std: number }[]>>({})
 const layerOrder = ref<string[]>([])
+const layerMetric = ref<'weight_norm' | 'weight_std'>('weight_norm')
+
+interface GraphProfileNode {
+  node_id: string
+  kind: string
+  in_dim: number
+  out_dim: number
+  dtype: string
+  param_count: number
+  time_ms: number
+}
+
+/** 计算图剖析：训练开始时由后端推送一次 */
+const graphProfile = ref<GraphProfileNode[]>([])
 
 const LAYER_COLORS = [
   '#22d3ee',
@@ -224,7 +238,7 @@ function layerOption(): echarts.EChartsOption {
     },
     yAxis: {
       type: 'value',
-      name: '‖W‖₁',
+      name: layerMetric.value === 'weight_norm' ? '‖W‖₁' : 'σ(W)',
       nameTextStyle: { color: '#94a3b8', fontSize: 10 },
       axisLabel: { color: '#94a3b8', fontSize: 10 },
       splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)' } },
@@ -234,7 +248,9 @@ function layerOption(): echarts.EChartsOption {
       type: 'line' as const,
       smooth: true,
       showSymbol: false,
-      data: layerHistory.value[nodeId] ?? [],
+      data: (layerHistory.value[nodeId] ?? []).map((point) =>
+        layerMetric.value === 'weight_norm' ? point.norm : point.std,
+      ),
       itemStyle: { color: LAYER_COLORS[index % LAYER_COLORS.length] },
       animationDuration: 300,
     })),
@@ -247,6 +263,16 @@ function updateLayerChart(): void {
   layerChart.setOption(layerOption(), true)
 }
 
+function setLayerMetric(metric: 'weight_norm' | 'weight_std'): void {
+  layerMetric.value = metric
+  updateLayerChart()
+}
+
+/** 计算图剖析里耗时最长的一层，用于归一化热力条 */
+const maxProfileTime = computed(() =>
+  Math.max(...graphProfile.value.map((node) => node.time_ms), 0.0001),
+)
+
 function onEvent(event: TrainingEvent): void {
   switch (event.type) {
     case 'started':
@@ -256,6 +282,14 @@ function onEvent(event: TrainingEvent): void {
         `训练开始：共 ${event.total_epochs} 个 epoch，输入维度 ${event.input_dim}`,
       )
       break
+
+    case 'graph_profile': {
+      const nodes = event.nodes
+      if (Array.isArray(nodes)) {
+        graphProfile.value = nodes as GraphProfileNode[]
+      }
+      break
+    }
 
     case 'epoch': {
       const epoch = toNumber(event.epoch)
@@ -277,7 +311,11 @@ function onEvent(event: TrainingEvent): void {
       const stats = event.layer_stats
       if (Array.isArray(stats)) {
         for (const raw of stats) {
-          const item = raw as { node_id?: string; weight_norm?: number }
+          const item = raw as {
+            node_id?: string
+            weight_norm?: number
+            weight_std?: number
+          }
           const nodeId = String(item.node_id ?? '')
           if (!nodeId) continue
           if (!layerOrder.value.includes(nodeId)) {
@@ -286,7 +324,10 @@ function onEvent(event: TrainingEvent): void {
           const values = layerHistory.value[nodeId] ?? []
           layerHistory.value[nodeId] = [
             ...values,
-            Number(item.weight_norm ?? 0),
+            {
+              norm: Number(item.weight_norm ?? 0),
+              std: Number(item.weight_std ?? 0),
+            },
           ]
         }
         updateLayerChart()
@@ -429,9 +470,37 @@ onBeforeUnmount(() => {
           class="flex shrink-0 items-center justify-between border-t px-4 py-1.5"
           :style="{ borderColor: 'var(--border-subtle)' }"
         >
-          <span class="text-[11px] text-muted"
-            >逐层权重范数（‖W‖₁ 随 epoch）</span
-          >
+          <span class="text-[11px] text-muted">
+            {{
+              layerMetric === 'weight_norm'
+                ? '逐层权重范数（‖W‖₁ 随 epoch）'
+                : '逐层权重标准差（σ(W) 随 epoch）'
+            }}
+          </span>
+          <div class="flex items-center gap-0.5">
+            <button
+              v-for="item in [
+                { key: 'weight_norm', label: '范数' },
+                { key: 'weight_std', label: '标准差' },
+              ]"
+              :key="item.key"
+              type="button"
+              class="rounded-sm px-2 py-0.5 text-[10px]"
+              :class="
+                layerMetric === item.key
+                  ? 'text-primary'
+                  : 'text-muted hover:text-secondary'
+              "
+              :style="
+                layerMetric === item.key
+                  ? { background: 'var(--bg-elevated)' }
+                  : {}
+              "
+              @click="setLayerMetric(item.key as 'weight_norm' | 'weight_std')"
+            >
+              {{ item.label }}
+            </button>
+          </div>
         </div>
         <div ref="layerChartRef" class="h-[150px] w-full shrink-0" />
       </AppCard>
@@ -476,6 +545,82 @@ onBeforeUnmount(() => {
           </p>
         </AppCard>
       </div>
+
+      <!-- 计算图剖析 -->
+      <AppCard
+        v-if="graphProfile.length > 0"
+        class="lg:col-span-3"
+        padding="none"
+      >
+        <div
+          class="flex items-center justify-between border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <h2 class="text-sm font-medium text-primary">计算图剖析</h2>
+          <span class="text-[10px] text-muted">
+            单次前向的粗略耗时（毫秒），非算子级 profiler
+          </span>
+        </div>
+        <div class="max-h-64 overflow-auto">
+          <table class="w-full text-left text-[11px]">
+            <thead
+              class="sticky top-0"
+              :style="{ background: 'var(--bg-elevated)' }"
+            >
+              <tr class="text-muted">
+                <th class="px-4 py-2">节点</th>
+                <th class="px-3 py-2">类型</th>
+                <th class="px-3 py-2">输入 → 输出</th>
+                <th class="px-3 py-2">dtype</th>
+                <th class="px-3 py-2">参数</th>
+                <th class="px-3 py-2">耗时</th>
+                <th class="px-4 py-2">占比</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="node in graphProfile"
+                :key="node.node_id"
+                class="border-t"
+                :style="{ borderColor: 'var(--border-subtle)' }"
+              >
+                <td class="px-4 py-1.5 font-mono text-secondary">
+                  {{ node.node_id }}
+                </td>
+                <td class="px-3 py-1.5 text-secondary">
+                  {{ node.kind === 'input' ? '输入' : '全连接' }}
+                </td>
+                <td class="px-3 py-1.5 font-mono text-secondary">
+                  {{ node.in_dim }} → {{ node.out_dim }}
+                </td>
+                <td class="px-3 py-1.5 font-mono text-muted">
+                  {{ node.dtype }}
+                </td>
+                <td class="px-3 py-1.5 font-mono text-secondary">
+                  {{ node.param_count }}
+                </td>
+                <td class="px-3 py-1.5 font-mono text-primary">
+                  {{ node.time_ms.toFixed(3) }} ms
+                </td>
+                <td class="px-4 py-1.5">
+                  <div
+                    class="h-1.5 w-full overflow-hidden rounded-sm"
+                    :style="{ background: 'var(--bg-elevated)' }"
+                  >
+                    <div
+                      class="h-1.5"
+                      :style="{
+                        width: `${(node.time_ms / maxProfileTime) * 100}%`,
+                        backgroundImage: 'var(--brand-gradient)',
+                      }"
+                    />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </AppCard>
 
       <!-- 日志 -->
       <AppCard class="min-h-0 lg:col-span-3" padding="none">
