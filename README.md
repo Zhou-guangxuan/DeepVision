@@ -242,6 +242,7 @@ cd backend
 - 训练监控页：ECharts 双轴实时曲线（训练损失 / 验证损失 / 准确率）、进度条、拓扑流光、日志流、停止按钮
 - 训练结束（含失败与中止）自动写入 `training_records`
 - **计算图剖析**：训练开始时推送 `graph_profile`，逐层展示形状 / dtype / 参数量 / 前向耗时，并持久化到记录
+- **点击节点看代码**：计算图表格任意一行可打开等效 PyTorch 代码，高亮该节点的定义行与前向计算行
 - 逐层曲线支持「范数 ‖W‖₁ / 标准差 σ(W)」切换，观察权重分布演化
 
 ## 已实现（阶段五）
@@ -296,6 +297,8 @@ cd backend
 | GET | `/api/records/{id}/diagnosis` | 训练曲线诊断（过拟合 / 欠拟合 / 学习率） | 是 |
 | POST | `/api/records/{id}/rerun` | 按原配置一键重跑 | 是 |
 | GET | `/api/records/compare?ids=` | 多实验曲线对比（2–4 条） | 是 |
+| GET | `/api/records/{id}/code` | 生成等效 PyTorch 代码与行号映射 | 是 |
+| GET | `/api/train/{task_id}/code` | 按训练任务生成等效代码 | 是 |
 | DELETE | `/api/records/{id}` | 删除记录 | 是 |
 | POST | `/api/graph/validate` | 校验网络拓扑结构 | 是 |
 | POST | `/api/datasets` | 上传并解析 CSV 数据集 | 是 |
