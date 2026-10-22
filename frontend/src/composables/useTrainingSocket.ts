@@ -10,6 +10,7 @@ export interface TrainingEvent {
     | 'started'
     | 'epoch'
     | 'graph_profile'
+    | 'image_eval'
     | 'completed'
     | 'failed'
     | 'stopped'

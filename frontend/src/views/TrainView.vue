@@ -5,8 +5,10 @@ import * as echarts from 'echarts'
 import type { ECharts } from 'echarts'
 
 import { getTrainCode, stopTraining, type GeneratedCode } from '@/api/train'
+import type { ImageEvalData } from '@/api/records'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppCard from '@/components/ui/AppCard.vue'
+import ImageEvalPanel from '@/components/train/ImageEvalPanel.vue'
 import TrainingTopology from '@/components/train/TrainingTopology.vue'
 import {
   useTrainingSocket,
@@ -71,6 +73,9 @@ interface GraphProfileNode {
 
 /** 计算图剖析：训练开始时由后端推送一次 */
 const graphProfile = ref<GraphProfileNode[]>([])
+
+/** 图像训练评估：训练结束时推送 */
+const imageEval = ref<ImageEvalData | null>(null)
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`
@@ -363,6 +368,11 @@ function onEvent(event: TrainingEvent): void {
       if (Array.isArray(nodes)) {
         graphProfile.value = nodes as GraphProfileNode[]
       }
+      break
+    }
+
+    case 'image_eval': {
+      imageEval.value = event as unknown as ImageEvalData
       break
     }
 
@@ -718,6 +728,18 @@ onBeforeUnmount(() => {
             耗时占比</span
           >
         </div>
+      </AppCard>
+
+      <!-- 图像评估 -->
+      <AppCard v-if="imageEval" class="lg:col-span-3" padding="none">
+        <div
+          class="flex items-center justify-between border-b px-4 py-3"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <h2 class="text-sm font-medium text-primary">图像评估</h2>
+          <span class="text-[10px] text-muted"> 验证集混淆矩阵与样本预测 </span>
+        </div>
+        <ImageEvalPanel v-bind="imageEval" />
       </AppCard>
 
       <!-- 等效代码 -->

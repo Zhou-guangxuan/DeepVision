@@ -122,3 +122,25 @@ export async function rerunRecord(
   )
   return data
 }
+
+export interface ImageEvalSample {
+  label: number
+  prediction: number
+  probability: number
+  pixels: number[][]
+}
+
+export interface ImageEvalData {
+  classes: string[]
+  size: number
+  confusion: number[][]
+  samples: ImageEvalSample[]
+}
+
+/** 图像训练的混淆矩阵与样本预测 */
+export async function getImageEval(recordId: number): Promise<ImageEvalData> {
+  const { data } = await http.get<ImageEvalData>(
+    `/api/records/${recordId}/image-eval`,
+  )
+  return data
+}
