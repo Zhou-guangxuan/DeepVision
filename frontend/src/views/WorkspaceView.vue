@@ -11,6 +11,11 @@ import { useRouter } from 'vue-router'
 
 import { validateGraph } from '@/api/graph'
 import { listRecords } from '@/api/records'
+import {
+  getWorkspaceDraft,
+  saveWorkspaceDraft,
+  type DraftGraph,
+} from '@/api/workspace'
 import NetworkCanvas from '@/components/canvas/NetworkCanvas.vue'
 import NodeLibrary from '@/components/canvas/NodeLibrary.vue'
 import PropertyPanel from '@/components/canvas/PropertyPanel.vue'
@@ -65,21 +70,48 @@ const validating = ref(false)
 
 let saveTimer: number | undefined
 
-// 拓扑变更后 2s 防抖写入本地草稿（对应设计文档 §5.3「自动保存」）
+async function persistDraft(): Promise<void> {
+  // 本地先写一份，断网时仍可恢复
+  graph.saveDraft()
+  try {
+    await saveWorkspaceDraft(graph.nodes, graph.edges)
+  } catch {
+    // 服务端不可用时静默失败，本地草稿仍在
+  }
+}
+
+// 拓扑变更后 1.5s 防抖写入草稿（本地 + 服务端，对应设计文档 §5.3「自动保存」）
 watch(
   [() => graph.nodes, () => graph.edges],
   () => {
     window.clearTimeout(saveTimer)
-    saveTimer = window.setTimeout(() => graph.saveDraft(), 2000)
+    saveTimer = window.setTimeout(() => {
+      void persistDraft()
+    }, 1500)
   },
   { deep: true },
 )
 
 onMounted(async () => {
   await auth.loadMe()
-  if (graph.loadDraft() && graph.nodes.length > 0) {
+
+  // 优先从账号恢复（跨设备），失败或为空再回退本地草稿
+  let restored = false
+  try {
+    const remote = await getWorkspaceDraft()
+    if (remote.graph && remote.graph.nodes?.length > 0) {
+      graph.applyDraft(remote.graph as DraftGraph)
+      restored = true
+      toast.info('已从账号恢复拓扑草稿')
+    }
+  } catch {
+    // 离线时直接走本地
+  }
+
+  if (!restored && graph.loadDraft() && graph.nodes.length > 0) {
     toast.info('已恢复上次的拓扑草稿')
   }
+
   await loadLayerStats()
 })
 

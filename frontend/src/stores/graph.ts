@@ -337,6 +337,21 @@ export const useGraphStore = defineStore('graph', () => {
     savedAt.value = null
   }
 
+  /** 应用服务端草稿（跨设备恢复） */
+  function applyDraft(payload: {
+    nodes: GraphNode[]
+    edges: GraphEdge[]
+    savedAt?: string | null
+  }): void {
+    nodes.value = payload.nodes
+    edges.value = payload.edges
+    savedAt.value = payload.savedAt ?? null
+    selectedNodeId.value = null
+    selectedEdgeId.value = null
+    past.value = []
+    future.value = []
+  }
+
   return {
     nodes,
     edges,
@@ -369,5 +384,6 @@ export const useGraphStore = defineStore('graph', () => {
     saveDraft,
     loadDraft,
     clearDraft,
+    applyDraft,
   }
 })
