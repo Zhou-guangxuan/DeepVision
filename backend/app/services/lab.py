@@ -799,3 +799,51 @@ def snapshot_detail(task: LabTask, epoch: int) -> dict:
             input_dim=input_units,
         ),
     }
+
+
+def integrated_gradients(task: LabTask, index: int = 0, steps: int = 32) -> dict:
+    """Integrated Gradients：把预测归因到每个输入特征。
+
+    基线取全零，沿「基线 → 样本」的直线积分梯度；
+    结果表示「该特征把预测从基线推到当前类别」的贡献，正负号代表方向。
+    """
+    if task.model is None or task.features is None or task.labels is None:
+        raise ValueError("模型尚未训练完成")
+    if not 0 <= index < len(task.features):
+        raise ValueError("样本下标超出范围")
+
+    model = task.model
+    model.eval()
+
+    features = torch.from_numpy(task.features[index : index + 1])
+    label = int(task.labels[index])
+
+    with torch.no_grad():
+        logits = model(features)
+        probabilities = torch.softmax(logits, dim=1)[0]
+        target = int(logits.argmax(dim=1).item())
+
+    baseline = torch.zeros_like(features)
+    steps = max(8, min(int(steps), 128))
+    accumulated = torch.zeros_like(features)
+
+    for step in range(1, steps + 1):
+        alpha = step / steps
+        interpolated = (baseline + alpha * (features - baseline)).requires_grad_(True)
+        output = model(interpolated)[0, target]
+        (gradient,) = torch.autograd.grad(output, interpolated)
+        accumulated += gradient
+
+    average = accumulated / steps
+    attributions = ((features - baseline) * average)[0]
+
+    return {
+        "index": index,
+        "label": label,
+        "prediction": target,
+        "probability": round(float(probabilities[target].item()), 4),
+        "steps": steps,
+        "features": [round(float(value), 4) for value in features[0]],
+        "attributions": [round(float(value), 6) for value in attributions],
+        "baseline": "zeros",
+    }

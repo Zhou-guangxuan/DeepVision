@@ -365,3 +365,23 @@ def test_lab_snapshot_missing_epoch(
     )
     assert resp.status_code == 400
     assert resp.json()["code"] == "LAB_SNAPSHOT_FAILED"
+
+
+def test_lab_integrated_gradients(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """归因：每个输入特征一个贡献值，概率在 [0,1]。"""
+    task_id = _train(client, auth_headers, epochs=6)
+
+    resp = client.get(
+        f"/api/lab/{task_id}/attribution",
+        params={"index": 0},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["index"] == 0
+    assert len(body["attributions"]) == 2
+    assert len(body["features"]) == 2
+    assert 0.0 <= body["probability"] <= 1.0
+    assert body["steps"] >= 8

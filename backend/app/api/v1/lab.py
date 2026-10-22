@@ -153,6 +153,21 @@ def lab_diagnosis(
     return curve_diagnosis.diagnose_curve(task.history)
 
 
+@router.get("/{task_id}/attribution", summary="Integrated Gradients 输入归因")
+def lab_attribution(
+    task_id: str,
+    index: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = _ready_task(task_id, current_user)
+    try:
+        return lab.integrated_gradients(task, index)
+    except ValueError as exc:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST, "LAB_ATTRIBUTION_FAILED", str(exc)
+        ) from exc
+
+
 @router.get("/{task_id}/snapshots", summary="训练快照列表")
 def lab_snapshots(
     task_id: str,
