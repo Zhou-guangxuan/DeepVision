@@ -41,3 +41,9 @@ class LabStartResponse(BaseModel):
 class LabControlResponse(BaseModel):
     task_id: str
     status: str
+
+
+class TuneStartRequest(BaseModel):
+    config: LabConfig = Field(default_factory=LabConfig)
+    trials: int = Field(default=6, ge=1, le=12, description="随机搜索的试验次数")
+    epochs: int = Field(default=12, ge=2, le=60, description="每次试验的最大轮数")

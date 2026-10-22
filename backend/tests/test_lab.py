@@ -1,5 +1,7 @@
 """教学实验室接口与实时通道测试。"""
 
+import time
+
 from fastapi.testclient import TestClient
 
 
@@ -261,3 +263,37 @@ def test_lab_curve_diagnosis(
     assert body["stats"]["epochs"] == 8
     assert isinstance(body["issues"], list)
     assert body["summary"]
+
+
+def test_lab_auto_tuning(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """自动调参：2 次试验跑完后给出最佳配置。"""
+    started = client.post(
+        "/api/lab/tune",
+        json={"config": {"hidden_layers": [8]}, "trials": 2, "epochs": 2},
+        headers=auth_headers,
+    )
+    assert started.status_code == 200, started.text
+    tune_id = started.json()["tune_id"]
+    assert started.json()["total"] == 2
+
+    state = started.json()
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        state = client.get(f"/api/lab/tune/{tune_id}", headers=auth_headers).json()
+        if state["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.2)
+
+    assert state["status"] == "completed", state
+    assert len(state["trials"]) == 2
+    assert state["best"] is not None
+    assert 0.0 <= state["best"]["accuracy"] <= 1.0
+    assert state["best"]["learning_rate"] > 0
+
+
+def test_tune_not_found(client: TestClient, auth_headers: dict[str, str]) -> None:
+    resp = client.get("/api/lab/tune/not-exist", headers=auth_headers)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "TUNE_NOT_FOUND"

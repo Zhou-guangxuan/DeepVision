@@ -9,8 +9,9 @@ from app.schemas.lab import (
     LabControlResponse,
     LabStartRequest,
     LabStartResponse,
+    TuneStartRequest,
 )
-from app.services import curve_diagnosis, lab
+from app.services import curve_diagnosis, lab, tuning
 
 router = APIRouter(prefix="/lab", tags=["lab"])
 
@@ -150,3 +151,30 @@ def lab_diagnosis(
     """复用记录级的规则引擎，直接分析当前任务的历史曲线。"""
     task = _owned_task(task_id, current_user)
     return curve_diagnosis.diagnose_curve(task.history)
+
+
+@router.post("/tune", summary="启动自动调参（随机搜索 + 早停）")
+def start_tune(
+    payload: TuneStartRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    tune = tuning.create_tune(
+        user_id=current_user.id,
+        base=payload.config.model_dump(),
+        trials=payload.trials,
+        epochs=payload.epochs,
+    )
+    return tune.snapshot()
+
+
+@router.get("/tune/{tune_id}", summary="查询自动调参进度")
+def get_tune(
+    tune_id: str,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    tune = tuning.get_tune(tune_id)
+    if tune is None or tune.user_id != current_user.id:
+        raise APIError(
+            status.HTTP_404_NOT_FOUND, "TUNE_NOT_FOUND", "自动调参任务不存在"
+        )
+    return tune.snapshot()
