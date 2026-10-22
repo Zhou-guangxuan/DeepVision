@@ -283,6 +283,7 @@ cd backend
 - **实验任务**：3 个内置任务（双螺旋达标 / 学习率过大 / 隐藏层过窄），一键应用参数，训练后自动判定达标并给出检查点问答与解释
 - **自动调参**：随机搜索学习率 / 结构 / 激活 / l2 / dropout / batch，连续 4 轮未提升即早停，结果表可一键回填最佳参数
 - **剪枝 / 量化对比**：magnitude 剪枝（30/50/70%）与动态 int8 量化，对比准确率、非零参数、权重字节与序列化体积，并解释「剪枝不省稠密空间」
+- **快照回放**：训练时约每 1/20 轮保存一次参数，训练后可拖动进度条或播放，回看任意 epoch 的决策边界与准确率
 - **对比实验**：任务结果弹窗可「再跑一组对比」，并排显示两组的准确率与 loss（曲线级对比在 `/history`）
 - 助教回答支持 **Markdown 渲染**，引擎可选择 自动 / 强制大模型 / 离线规则
 - 实验室训练结果写入 `training_records`（`source = lab`），与第一阶段历史共用一张表
@@ -305,6 +306,8 @@ cd backend
 | POST | `/api/lab/tune` | 启动自动调参（随机搜索 + 早停） | 是 |
 | GET | `/api/lab/tune/{tune_id}` | 查询自动调参进度 | 是 |
 | GET | `/api/lab/{task_id}/compression` | 剪枝 / 量化压缩对比 | 是 |
+| GET | `/api/lab/{task_id}/snapshots` | 训练快照列表 | 是 |
+| GET | `/api/lab/{task_id}/snapshot?epoch=` | 回放指定 epoch 的决策边界 | 是 |
 | DELETE | `/api/records/{id}` | 删除记录 | 是 |
 | POST | `/api/graph/validate` | 校验网络拓扑结构 | 是 |
 | POST | `/api/datasets` | 上传并解析 CSV 数据集 | 是 |
