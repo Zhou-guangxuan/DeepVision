@@ -107,9 +107,7 @@ def test_image_training_runs(
     assert len(image_eval["samples"]) > 0
     assert len(image_eval["samples"][0]["pixels"]) == 8
 
-    detail = client.get(
-        f"/api/records/{record['id']}/image-eval", headers=auth_headers
-    )
+    detail = client.get(f"/api/records/{record['id']}/image-eval", headers=auth_headers)
     assert detail.status_code == 200
     assert detail.json()["size"] == 8
 
