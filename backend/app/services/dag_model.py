@@ -139,6 +139,13 @@ class DagNet(nn.Module):
                             "out_dim": int(tensor.shape[1]),
                             "dtype": str(tensor.dtype).replace("torch.", ""),
                             "param_count": 0,
+                            "weight_bytes": 0,
+                            # 激活内存估算：batch × 输出维度 × 元素字节数
+                            "activation_bytes": int(
+                                tensor.shape[0]
+                                * tensor.shape[1]
+                                * tensor.element_size()
+                            ),
                             "time_ms": 0.0,
                         }
                     )
@@ -153,6 +160,9 @@ class DagNet(nn.Module):
                 elapsed = (time.perf_counter() - begin) * 1000
 
                 outputs[node_id] = tensor
+                param_count = sum(
+                    parameter.numel() for parameter in module.parameters()
+                )
                 records.append(
                     {
                         "node_id": node_id,
@@ -160,8 +170,12 @@ class DagNet(nn.Module):
                         "in_dim": int(merged.shape[1]),
                         "out_dim": int(tensor.shape[1]),
                         "dtype": str(tensor.dtype).replace("torch.", ""),
-                        "param_count": sum(
-                            parameter.numel() for parameter in module.parameters()
+                        "param_count": param_count,
+                        "weight_bytes": param_count * 4,
+                        "activation_bytes": int(
+                            tensor.shape[0]
+                            * tensor.shape[1]
+                            * tensor.element_size()
                         ),
                         "time_ms": round(elapsed, 4),
                     }

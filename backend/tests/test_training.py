@@ -164,6 +164,11 @@ def test_training_completes_and_saves_record(
     assert nodes["n3"]["param_count"] == 18  # 8×2 + 2
     assert nodes["n2"]["dtype"] == "float32"
     assert nodes["n2"]["time_ms"] >= 0
+    # 内存估算：权重 24×4 字节；激活 batch×8×4 字节
+    assert nodes["n2"]["weight_bytes"] == 24 * 4
+    assert nodes["n3"]["weight_bytes"] == 18 * 4
+    assert nodes["n2"]["activation_bytes"] > 0
+    assert nodes["n2"]["activation_bytes"] % (8 * 4) == 0
 
     records = client.get("/api/records", headers=auth_headers).json()
     assert records["total"] == 1
