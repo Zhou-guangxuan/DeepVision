@@ -278,3 +278,26 @@ export async function getSnapshot(
   )
   return data
 }
+
+export interface AttributionResult {
+  index: number
+  label: number
+  prediction: number
+  probability: number
+  steps: number
+  features: number[]
+  attributions: number[]
+  baseline: string
+}
+
+/** Integrated Gradients：把预测归因到每个输入特征 */
+export async function attributionLab(
+  taskId: string,
+  index = 0,
+): Promise<AttributionResult> {
+  const { data } = await http.get<AttributionResult>(
+    `/api/lab/${taskId}/attribution`,
+    { params: { index } },
+  )
+  return data
+}

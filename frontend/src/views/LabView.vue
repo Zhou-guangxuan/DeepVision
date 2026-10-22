@@ -53,7 +53,8 @@ const STATUS_TEXT: Record<LabStatus, string> = {
   failed: 'failed',
 }
 
-type InspectorTab = 'propagation' | 'attention' | 'trend' | 'projection'
+type InspectorTab =
+  'propagation' | 'attention' | 'trend' | 'projection' | 'attribution'
 
 const NAV_ITEMS: {
   label: string
@@ -62,6 +63,7 @@ const NAV_ITEMS: {
   { label: '前向/反向传播', tab: 'propagation' },
   { label: '注意力 3D', tab: 'attention' },
   { label: '注意力曲线', tab: 'trend' },
+  { label: '归因', tab: 'attribution' },
   { label: '降维投影', tab: 'projection' },
 ]
 

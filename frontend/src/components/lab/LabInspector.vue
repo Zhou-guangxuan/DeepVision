@@ -4,9 +4,11 @@ import * as echarts from 'echarts'
 import type { ECharts } from 'echarts'
 
 import {
+  attributionLab,
   attentionLab,
   inspectLab,
   projectLab,
+  type AttributionResult,
   type LabAttentionHistory,
   type LabInspect,
   type LabProjection,
@@ -25,12 +27,13 @@ const props = defineProps<{
   open: boolean
   taskId: string | null
   layers: number[]
-  initialTab?: 'propagation' | 'attention' | 'trend' | 'projection'
+  initialTab?:
+    'propagation' | 'attention' | 'trend' | 'projection' | 'attribution'
 }>()
 
 const emit = defineEmits<{ close: []; saliency: [number[]] }>()
 
-type Tab = 'propagation' | 'attention' | 'trend' | 'projection'
+type Tab = 'propagation' | 'attention' | 'trend' | 'projection' | 'attribution'
 
 const tab = ref<Tab>('propagation')
 const sampleIndex = ref(0)
@@ -39,6 +42,8 @@ const projection = ref<LabProjection | null>(null)
 const projectionLayer = ref(0)
 const projectionMethod = ref<'pca' | 'tsne'>('pca')
 const trend = ref<LabAttentionHistory | null>(null)
+const attribution = ref<AttributionResult | null>(null)
+const attributionIndex = ref(0)
 const loading = ref(false)
 const exporting = ref(false)
 const errorMessage = ref('')
@@ -46,8 +51,10 @@ const step = ref(0)
 const direction = ref<'forward' | 'backward'>('forward')
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const trendRef = ref<HTMLElement | null>(null)
+const attributionRef = ref<HTMLElement | null>(null)
 const modalRef = ref<HTMLElement | null>(null)
 let trendChart: ECharts | null = null
+let attributionChart: ECharts | null = null
 let canvasObserver: ResizeObserver | null = null
 
 const layerCount = computed(() => inspect.value?.layers.length ?? 0)
@@ -191,6 +198,66 @@ function onProjectionMethodChange(): void {
   void loadProjection()
 }
 
+async function loadAttribution(): Promise<void> {
+  if (!props.taskId) return
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    attribution.value = await attributionLab(
+      props.taskId,
+      attributionIndex.value,
+    )
+    await nextTick()
+    renderAttribution()
+  } catch {
+    attribution.value = null
+    errorMessage.value = '归因计算失败，请重试'
+  } finally {
+    loading.value = false
+  }
+}
+
+function renderAttribution(): void {
+  if (!attributionRef.value || !attribution.value) return
+  if (!attributionChart) attributionChart = echarts.init(attributionRef.value)
+
+  const data = attribution.value
+  const bars = data.attributions.map((value) => ({
+    value,
+    itemStyle: { color: value >= 0 ? '#22d3ee' : '#fb7185' },
+    label: {
+      show: true,
+      position: 'right' as const,
+      color: '#94a3b8',
+      fontSize: 9,
+    },
+  }))
+
+  attributionChart.setOption(
+    {
+      backgroundColor: 'transparent',
+      grid: { left: 44, right: 60, top: 16, bottom: 26 },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: {
+        type: 'value',
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#334155' } },
+        axisLabel: { color: '#94a3b8', fontSize: 9 },
+        splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.1)' } },
+      },
+      yAxis: {
+        type: 'category',
+        data: data.attributions.map((_, index) => `f${index}`),
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: { color: '#94a3b8', fontSize: 10 },
+      },
+      series: [{ type: 'bar', data: bars, barMaxWidth: 16 }],
+    },
+    true,
+  )
+}
+
 /** 把当前弹窗内容导出为 PNG */
 async function exportImage(): Promise<void> {
   if (!modalRef.value || exporting.value) return
@@ -282,6 +349,13 @@ function switchTab(next: Tab): void {
       void nextTick().then(renderTrend)
     }
   }
+  if (next === 'attribution') {
+    if (attribution.value === null) {
+      void loadAttribution()
+    } else {
+      void nextTick().then(renderAttribution)
+    }
+  }
 }
 
 watch(
@@ -303,12 +377,17 @@ watch(
       if (trend.value === null) void loadAttentionTrend()
       void nextTick().then(renderTrend)
     }
+    if (tab.value === 'attribution') {
+      if (attribution.value === null) void loadAttribution()
+      void nextTick().then(renderAttribution)
+    }
   },
 )
 
 function handleWindowResize(): void {
   drawProjection()
   trendChart?.resize()
+  attributionChart?.resize()
 }
 
 /** 画布尺寸跟随容器；容器显隐或缩放都会触发重绘 */
@@ -357,6 +436,8 @@ onBeforeUnmount(() => {
   canvasObserver = null
   trendChart?.dispose()
   trendChart = null
+  attributionChart?.dispose()
+  attributionChart = null
 })
 </script>
 
@@ -384,6 +465,7 @@ onBeforeUnmount(() => {
               { key: 'propagation', label: '前向 / 反向传播' },
               { key: 'attention', label: '注意力' },
               { key: 'trend', label: '注意力曲线' },
+              { key: 'attribution', label: '归因' },
               { key: 'projection', label: '降维投影' },
             ]"
             :key="item.key"
@@ -644,6 +726,41 @@ onBeforeUnmount(() => {
           <p class="mt-2 text-[10px] text-muted">
             每条线代表一个输入特征的 |∂loss/∂x × x| 随 epoch
             的均值；曲线走高说明模型越来越依赖该特征。
+          </p>
+        </template>
+
+        <!-- 归因 -->
+        <template v-else-if="tab === 'attribution'">
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="text-[11px] text-secondary">
+              样本
+              <input
+                v-model.number="attributionIndex"
+                type="number"
+                min="0"
+                class="ml-1 w-20 rounded-sm border bg-transparent px-2 py-1 text-xs text-secondary"
+                :style="{ borderColor: 'var(--border-default)' }"
+              />
+            </label>
+            <AppButton size="sm" :loading="loading" @click="loadAttribution">
+              计算归因
+            </AppButton>
+            <span v-if="attribution" class="text-[11px] text-muted">
+              预测类别 {{ attribution.prediction }} · 置信度
+              {{ (attribution.probability * 100).toFixed(1) }}% · 真实标签
+              {{ attribution.label }}
+            </span>
+          </div>
+          <div
+            class="relative mt-3 h-[240px] w-full overflow-hidden rounded-md border"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <div ref="attributionRef" class="h-full w-full" />
+          </div>
+          <p class="mt-2 text-[10px] leading-relaxed text-muted">
+            Integrated Gradients：基线取全零、积分
+            {{ attribution?.steps ?? 32 }}
+            步。正值表示该特征把预测推向当前类别，负值表示拉回。
           </p>
         </template>
 
