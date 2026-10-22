@@ -297,3 +297,32 @@ def test_tune_not_found(client: TestClient, auth_headers: dict[str, str]) -> Non
     resp = client.get("/api/lab/tune/not-exist", headers=auth_headers)
     assert resp.status_code == 404
     assert resp.json()["code"] == "TUNE_NOT_FOUND"
+
+
+def test_lab_compression(
+    client: TestClient, auth_headers: dict[str, str], train_env
+) -> None:
+    """剪枝后非零参数减少；量化后体积变小；三种方案准确率都在 [0,1]。"""
+    task_id = _train(client, auth_headers, epochs=8)
+
+    resp = client.get(
+        f"/api/lab/{task_id}/compression",
+        params={"sparsity": 0.4},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    baseline = body["baseline"]
+    pruned = body["pruned"]
+    quantized = body["quantized"]
+
+    assert baseline["params"] > 0
+    assert pruned["nonzero"] < baseline["params"]
+    assert pruned["sparsity"] == 0.4
+    # 权重本身：int8 应小于 float32（序列化体积可能被元数据反超）
+    assert quantized["weight_bytes"] < baseline["weight_bytes"]
+    assert quantized["compression_ratio"] > 1
+
+    for item in (baseline, pruned, quantized):
+        assert 0.0 <= item["accuracy"] <= 1.0

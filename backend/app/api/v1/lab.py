@@ -11,7 +11,7 @@ from app.schemas.lab import (
     LabStartResponse,
     TuneStartRequest,
 )
-from app.services import curve_diagnosis, lab, tuning
+from app.services import compression, curve_diagnosis, lab, tuning
 
 router = APIRouter(prefix="/lab", tags=["lab"])
 
@@ -151,6 +151,21 @@ def lab_diagnosis(
     """复用记录级的规则引擎，直接分析当前任务的历史曲线。"""
     task = _owned_task(task_id, current_user)
     return curve_diagnosis.diagnose_curve(task.history)
+
+
+@router.get("/{task_id}/compression", summary="剪枝 / 量化压缩对比")
+def lab_compression(
+    task_id: str,
+    sparsity: float = Query(default=0.3, gt=0, lt=0.95),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    task = _ready_task(task_id, current_user)
+    try:
+        return compression.compare(task, sparsity)
+    except ValueError as exc:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST, "LAB_COMPRESSION_FAILED", str(exc)
+        ) from exc
 
 
 @router.post("/tune", summary="启动自动调参（随机搜索 + 早停）")
