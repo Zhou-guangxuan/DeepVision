@@ -29,3 +29,20 @@ export async function startTraining(
 export async function stopTraining(taskId: string): Promise<void> {
   await http.post(`/api/train/${taskId}/stop`)
 }
+
+export interface CodeLineRange {
+  definition: number[]
+  forward: number[]
+}
+
+export interface GeneratedCode {
+  code: string
+  lines: Record<string, CodeLineRange>
+  total_lines: number
+}
+
+/** 生成等效 PyTorch 代码与节点到行号的映射 */
+export async function getTrainCode(taskId: string): Promise<GeneratedCode> {
+  const { data } = await http.get<GeneratedCode>(`/api/train/${taskId}/code`)
+  return data
+}

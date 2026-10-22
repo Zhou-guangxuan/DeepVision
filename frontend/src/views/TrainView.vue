@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import type { ECharts } from 'echarts'
 
-import { stopTraining } from '@/api/train'
+import { getTrainCode, stopTraining, type GeneratedCode } from '@/api/train'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppCard from '@/components/ui/AppCard.vue'
 import TrainingTopology from '@/components/train/TrainingTopology.vue'
@@ -69,6 +69,42 @@ interface GraphProfileNode {
 
 /** 计算图剖析：训练开始时由后端推送一次 */
 const graphProfile = ref<GraphProfileNode[]>([])
+
+// 代码查看器
+const codeOpen = ref(false)
+const codeLoading = ref(false)
+const codeData = ref<GeneratedCode | null>(null)
+const codeNodeId = ref('')
+
+const codeLines = computed(() => codeData.value?.code.split('\n') ?? [])
+
+const highlightedLines = computed(() => {
+  const active = new Set<number>()
+  const entry = codeData.value?.lines[codeNodeId.value]
+  if (!entry) return active
+  for (const range of [entry.definition, entry.forward]) {
+    if (range && range.length === 2) {
+      for (let line = range[0]; line <= range[1]; line += 1) active.add(line)
+    }
+  }
+  return active
+})
+
+async function openCode(nodeId: string): Promise<void> {
+  if (!taskId) return
+  codeNodeId.value = nodeId
+  codeOpen.value = true
+  if (codeData.value) return
+
+  codeLoading.value = true
+  try {
+    codeData.value = await getTrainCode(taskId)
+  } catch {
+    codeOpen.value = false
+  } finally {
+    codeLoading.value = false
+  }
+}
 
 const LAYER_COLORS = [
   '#22d3ee',
@@ -558,7 +594,7 @@ onBeforeUnmount(() => {
         >
           <h2 class="text-sm font-medium text-primary">计算图剖析</h2>
           <span class="text-[10px] text-muted">
-            单次前向的粗略耗时（毫秒），非算子级 profiler
+            单次前向的粗略耗时（毫秒）· 点击行查看等效代码
           </span>
         </div>
         <div class="max-h-64 overflow-auto">
@@ -581,8 +617,9 @@ onBeforeUnmount(() => {
               <tr
                 v-for="node in graphProfile"
                 :key="node.node_id"
-                class="border-t"
+                class="cursor-pointer border-t transition-colors duration-fast hover:bg-hover"
                 :style="{ borderColor: 'var(--border-subtle)' }"
+                @click="openCode(node.node_id)"
               >
                 <td class="px-4 py-1.5 font-mono text-secondary">
                   {{ node.node_id }}
@@ -621,6 +658,59 @@ onBeforeUnmount(() => {
           </table>
         </div>
       </AppCard>
+
+      <!-- 等效代码 -->
+      <div
+        v-if="codeOpen"
+        class="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+        @click.self="codeOpen = false"
+      >
+        <div
+          class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border"
+          :style="{
+            borderColor: 'var(--border-default)',
+            background: 'var(--bg-surface)',
+          }"
+        >
+          <header
+            class="flex shrink-0 items-center justify-between border-b px-4 py-3"
+            :style="{ borderColor: 'var(--border-subtle)' }"
+          >
+            <div>
+              <h3 class="text-sm font-medium text-primary">
+                等效代码 · 节点 {{ codeNodeId }}
+              </h3>
+              <p class="mt-0.5 text-[10px] text-muted">
+                由拓扑自动生成，用于对照阅读；实际训练由 DagNet 执行
+              </p>
+            </div>
+            <AppButton variant="ghost" size="sm" @click="codeOpen = false">
+              关闭
+            </AppButton>
+          </header>
+
+          <div class="min-h-0 flex-1 overflow-auto py-2">
+            <p v-if="codeLoading" class="px-4 text-xs text-muted">生成中…</p>
+            <div
+              v-for="(line, index) in codeLines"
+              :key="index"
+              class="flex gap-3 px-3 font-mono text-[11px] leading-5"
+              :style="
+                highlightedLines.has(index + 1)
+                  ? { background: 'rgba(34, 211, 238, 0.12)' }
+                  : {}
+              "
+            >
+              <span class="w-8 shrink-0 select-none text-right text-muted">
+                {{ index + 1 }}
+              </span>
+              <span class="whitespace-pre text-secondary">{{
+                line || ' '
+              }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- 日志 -->
       <AppCard class="min-h-0 lg:col-span-3" padding="none">
