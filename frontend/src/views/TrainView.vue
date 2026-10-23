@@ -77,6 +77,9 @@ const graphProfile = ref<GraphProfileNode[]>([])
 /** 图像训练评估：训练结束时推送 */
 const imageEval = ref<ImageEvalData | null>(null)
 
+/** 拓扑流光方向：仅作视觉示意，前向青色 / 反向紫红 */
+const flowDirection = ref<'forward' | 'backward'>('forward')
+
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
@@ -594,16 +597,41 @@ onBeforeUnmount(() => {
       <div class="flex min-h-0 flex-col gap-4">
         <AppCard class="shrink-0" padding="none">
           <div
-            class="border-b px-4 py-3"
+            class="flex items-center justify-between border-b px-4 py-3"
             :style="{ borderColor: 'var(--border-subtle)' }"
           >
             <h2 class="text-sm font-medium text-primary">网络拓扑</h2>
+            <div class="flex items-center gap-0.5">
+              <button
+                v-for="item in [
+                  { key: 'forward', label: '前向' },
+                  { key: 'backward', label: '反向' },
+                ]"
+                :key="item.key"
+                type="button"
+                class="rounded-sm px-2 py-0.5 text-[10px]"
+                :class="
+                  flowDirection === item.key
+                    ? 'text-primary'
+                    : 'text-muted hover:text-secondary'
+                "
+                :style="
+                  flowDirection === item.key
+                    ? { background: 'var(--bg-elevated)' }
+                    : {}
+                "
+                @click="flowDirection = item.key as 'forward' | 'backward'"
+              >
+                {{ item.label }}
+              </button>
+            </div>
           </div>
           <div class="h-[200px] p-2">
             <TrainingTopology
               :nodes="graph.nodes"
               :edges="graph.edges"
               :active="status === 'running'"
+              :direction="flowDirection"
               :heat="heatByNode"
               :titles="profileTitles"
             />

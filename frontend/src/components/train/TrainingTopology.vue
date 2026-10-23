@@ -13,6 +13,8 @@ const props = defineProps<{
   nodes: GraphNode[]
   edges: GraphEdge[]
   active: boolean
+  /** 流光方向：前向（默认）或反向；仅为视觉示意 */
+  direction?: 'forward' | 'backward'
   /** node_id → 0..1 的归一化耗时，提供时节点按热力着色 */
   heat?: Record<string, number>
   /** node_id → 悬停提示文本 */
@@ -120,15 +122,20 @@ const edgePaths = computed(() =>
           stroke="rgba(148, 163, 184, 0.28)"
           stroke-width="1.5"
         />
-        <!-- 前向传播流光：dashoffset 逐渐减小，视觉上自输入流向输出 -->
+        <!-- 传播流光：前向自输入到输出；反向用紫红色并逆序播放 -->
         <path
           v-if="active"
           :d="edge.d"
           fill="none"
-          stroke="var(--brand-cyan)"
+          :stroke="
+            direction === 'backward'
+              ? 'var(--brand-violet)'
+              : 'var(--brand-cyan)'
+          "
           stroke-width="1.5"
           stroke-dasharray="3 9"
           class="dv-flow"
+          :class="{ 'dv-flow--backward': direction === 'backward' }"
         />
       </g>
 
@@ -159,6 +166,10 @@ const edgePaths = computed(() =>
   to {
     stroke-dashoffset: -12;
   }
+}
+
+.dv-flow--backward {
+  animation-direction: reverse;
 }
 
 @media (prefers-reduced-motion: reduce) {
