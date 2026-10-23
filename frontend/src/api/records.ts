@@ -61,6 +61,11 @@ export async function deleteRecord(id: number): Promise<void> {
   await http.delete(`/api/records/${id}`)
 }
 
+export async function getRecord(id: number): Promise<TrainingRecord> {
+  const { data } = await http.get<TrainingRecord>(`/api/records/${id}`)
+  return data
+}
+
 export interface CurvePoint {
   epoch: number | null
   train_loss: number | null

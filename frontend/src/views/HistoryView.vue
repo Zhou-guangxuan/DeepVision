@@ -397,6 +397,13 @@ onBeforeUnmount(() => {
                   <AppButton
                     variant="secondary"
                     size="sm"
+                    @click="router.push(`/history/${record.id}`)"
+                  >
+                    详情
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
                     @click="showDiagnosis(record)"
                   >
                     诊断

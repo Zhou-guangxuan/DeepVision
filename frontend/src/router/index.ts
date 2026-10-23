@@ -41,6 +41,11 @@ const router = createRouter({
       component: () => import('@/views/HistoryView.vue'),
     },
     {
+      path: '/history/:id',
+      name: 'record-detail',
+      component: () => import('@/views/RecordDetailView.vue'),
+    },
+    {
       path: '/images',
       name: 'images',
       component: () => import('@/views/ImageView.vue'),
