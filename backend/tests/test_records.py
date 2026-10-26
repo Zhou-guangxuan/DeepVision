@@ -216,6 +216,8 @@ def test_record_diagnosis_and_compare(
     runs = compare.json()["runs"]
     assert [run["id"] for run in runs] == [first["id"], second["id"]]
     assert runs[0]["history"][0]["epoch"] == 1
+    # 支持按实际耗时对齐：字段存在（历史数据可能为 None）
+    assert "elapsed_ms" in runs[0]["history"][0]
 
 
 def test_compare_requires_two_to_four_ids(

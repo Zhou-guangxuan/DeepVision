@@ -249,9 +249,16 @@ def _collect_layer_stats(
             weight_std = 0.0
 
         activation = outputs.get(node_id)
-        activation_mean = (
-            float(activation.abs().mean().item()) if activation is not None else 0.0
-        )
+        if activation is not None:
+            abs_values = activation.abs().flatten()
+            activation_mean = float(abs_values.mean().item())
+            # 分位数用于「激活分布演化」：只比均值多了尾部信息
+            activation_p50 = float(torch.quantile(abs_values, 0.5).item())
+            activation_p95 = float(torch.quantile(abs_values, 0.95).item())
+        else:
+            activation_mean = 0.0
+            activation_p50 = 0.0
+            activation_p95 = 0.0
 
         stats.append(
             {
@@ -261,6 +268,8 @@ def _collect_layer_stats(
                 "weight_std": round(weight_std, 6),
                 "grad_norm": round(grad_norm, 6),
                 "activation_mean": round(activation_mean, 6),
+                "activation_p50": round(activation_p50, 6),
+                "activation_p95": round(activation_p95, 6),
             }
         )
 

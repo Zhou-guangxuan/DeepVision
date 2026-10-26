@@ -153,6 +153,8 @@ def test_training_completes_and_saves_record(
         assert item["weight_norm"] > 0
         assert item["activation_mean"] >= 0
         assert "weight_std" in item
+        # 激活分位数：P95 不低于 P50
+        assert item["activation_p95"] >= item["activation_p50"] >= 0
 
     # 计算图剖析：形状 / dtype / 参数量 / 耗时
     profile_event = next(event for event in events if event["type"] == "graph_profile")

@@ -144,6 +144,8 @@ def compare_records(
                         "train_loss": item.get("train_loss"),
                         "val_loss": item.get("val_loss"),
                         "accuracy": item.get("accuracy"),
+                        # 用于「按实际耗时」对齐；历史记录可能没有该字段
+                        "elapsed_ms": item.get("elapsed_ms"),
                     }
                     for item in history
                 ],
