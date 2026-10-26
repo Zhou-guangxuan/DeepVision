@@ -281,6 +281,9 @@ def _run(task: LabTask) -> None:
     l2 = float(config.get("l2", 0.0))
 
     try:
+        # 固定种子：教学任务与快照回放需要可复现的结果
+        torch.manual_seed(42)
+
         input_units = max(1, min(int(config.get("input_units", 2)), 16))
         output_units = max(2, min(int(config.get("output_units", 2)), 8))
 
