@@ -89,6 +89,53 @@ DeepVision/
 - Python 3.12+（后端已在 3.12 与 3.14 上验证通过；后续 PyTorch 等依赖对 3.14 支持可能滞后，推荐 3.12）
 - Node.js 18+
 
+## 快速启动（环境已配置好）
+
+开**两个** PowerShell 窗口，普通权限即可。
+
+**窗口 1：后端**
+
+```powershell
+cd D:\AI-web\backend
+D:\AI-web\.venv\Scripts\python.exe -m alembic upgrade head
+D:\AI-web\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+看到 `Uvicorn running on http://127.0.0.1:8000` 即成功。
+
+- `alembic upgrade head` 只在第一次启动或拉到新代码后需要执行
+- 演示时建议**不加** `--reload`，避免训练中途被重启打断
+
+**窗口 2：前端**
+
+```powershell
+cd D:\AI-web\frontend
+npm.cmd run dev
+```
+
+看到 `Local: http://localhost:5173/` 即成功。Windows 上必须写 `npm.cmd`，直接写 `npm` 可能被执行策略拦住。
+
+**验证**
+
+| 检查 | 地址 | 预期 |
+| --- | --- | --- |
+| 后端健康 | http://127.0.0.1:8000/health | `{"status":"ok"}` |
+| 接口文档 | http://127.0.0.1:8000/docs | Swagger 页面 |
+| 前端 | http://localhost:5173 | 登录页（`admin` / `123456`） |
+
+停止：两个窗口各按一次 `Ctrl + C`。
+
+**端口被占用**
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000 -State Listen
+Stop-Process -Id <上面查到的进程号> -Force
+```
+
+前端 5173 被占用时，可改用 `npm.cmd run dev -- --port 5174`。
+
+> 从零安装依赖的完整步骤见下面两节；本节只针对已经配置好 `.venv` 与 `node_modules` 的情况。
+
 ## 后端
 
 ```bash
