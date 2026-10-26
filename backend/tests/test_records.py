@@ -252,3 +252,38 @@ def test_record_code_generation(
     assert "nn.Linear(8, 128)" in body["code"]
     assert "nn.Linear(128, 2)" in body["code"]
     assert body["lines"]["n2"]["definition"]
+
+
+def test_download_model(
+    client: TestClient, auth_headers: dict[str, str], tmp_path, monkeypatch
+) -> None:
+    from app.core.config import Settings
+
+    settings = Settings(storage_dir=str(tmp_path / "storage"))
+    monkeypatch.setattr("app.api.v1.records.get_settings", lambda: settings)
+
+    model_dir = tmp_path / "storage" / "models" / "1"
+    model_dir.mkdir(parents=True)
+    model_file = model_dir / "task-m1.pt"
+    model_file.write_bytes(b"demo-weights")
+
+    payload = dict(SAMPLE_RECORD, task_id="task-m1", model_file_url=str(model_file))
+    created = client.post("/api/records", json=payload, headers=auth_headers).json()
+
+    resp = client.get(f"/api/records/{created['id']}/model", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.content == b"demo-weights"
+    assert "attachment" in resp.headers["content-disposition"]
+    assert "deepvision-record-" in resp.headers["content-disposition"]
+
+
+def test_download_model_without_file(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    created = client.post(
+        "/api/records", json=SAMPLE_RECORD, headers=auth_headers
+    ).json()
+
+    resp = client.get(f"/api/records/{created['id']}/model", headers=auth_headers)
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "MODEL_NOT_AVAILABLE"

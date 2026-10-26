@@ -112,9 +112,7 @@ def test_image_training_runs(
     assert detail.json()["size"] == 8
 
     # 图像记录也支持一键重跑：应创建图像任务而不是走 DAG 校验
-    rerun = client.post(
-        f"/api/records/{record['id']}/rerun", headers=auth_headers
-    )
+    rerun = client.post(f"/api/records/{record['id']}/rerun", headers=auth_headers)
     assert rerun.status_code == 202, rerun.text
     assert rerun.json()["task_id"] != started.json()["task_id"]
     assert rerun.json()["total_epochs"] == 2

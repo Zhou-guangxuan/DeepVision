@@ -3,11 +3,15 @@
 所有接口均要求登录，且强制校验资源归属，防止 ID 越权。
 """
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
+from app.core.config import get_settings
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models.dataset import Dataset
@@ -279,6 +283,46 @@ def get_image_eval(
             "该记录不是图像训练，或未保存图像评估",
         )
     return image_eval
+
+
+@router.get("/{record_id}/model", summary="下载训练好的模型权重")
+def download_model(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> FileResponse:
+    record = db.get(TrainingRecord, record_id)
+    if record is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "RECORD_NOT_FOUND", "训练记录不存在")
+    _ensure_owned(record, current_user)
+
+    if not record.model_file_url:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "MODEL_NOT_AVAILABLE",
+            "该记录没有保存模型文件（例如图像实验线不落盘权重）",
+        )
+
+    storage = Path(get_settings().storage_dir).resolve()
+    path = Path(record.model_file_url).resolve()
+    if storage != path and storage not in path.parents:
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "MODEL_PATH_INVALID",
+            "模型文件路径非法",
+        )
+    if not path.is_file():
+        raise APIError(
+            status.HTTP_404_NOT_FOUND,
+            "MODEL_FILE_MISSING",
+            "模型文件已丢失，请重新训练",
+        )
+
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=f"deepvision-record-{record_id}.pt",
+    )
 
 
 @router.get("/{record_id}", response_model=RecordResponse, summary="训练记录详情")
