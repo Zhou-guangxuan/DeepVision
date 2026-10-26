@@ -66,6 +66,14 @@ export async function getRecord(id: number): Promise<TrainingRecord> {
   return data
 }
 
+/** 下载该记录保存的模型权重（.pt） */
+export async function downloadModel(recordId: number): Promise<Blob> {
+  const { data } = await http.get<Blob>(`/api/records/${recordId}/model`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
 export interface CurvePoint {
   epoch: number | null
   train_loss: number | null

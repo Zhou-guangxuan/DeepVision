@@ -4,12 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import type { ECharts } from 'echarts'
 
+import { downloadModel, type ImageEvalData } from '@/api/records'
 import { getTrainCode, stopTraining, type GeneratedCode } from '@/api/train'
-import type { ImageEvalData } from '@/api/records'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppCard from '@/components/ui/AppCard.vue'
 import ImageEvalPanel from '@/components/train/ImageEvalPanel.vue'
 import TrainingTopology from '@/components/train/TrainingTopology.vue'
+import { saveBlob } from '@/utils/download'
 import {
   useTrainingSocket,
   type TrainingEvent,
@@ -48,6 +49,24 @@ const stopping = ref(false)
 const failureReason = ref('')
 const finalLoss = ref<number | null>(null)
 const finalAccuracy = ref<number | null>(null)
+/** 训练完成后用于下载模型 */
+const recordId = ref<number | null>(null)
+const isImageTask = ref(false)
+const downloading = ref(false)
+
+async function downloadTrainedModel(): Promise<void> {
+  if (!recordId.value) return
+  downloading.value = true
+  try {
+    const blob = await downloadModel(recordId.value)
+    saveBlob(blob, `deepvision-record-${recordId.value}.pt`)
+    toast.success('模型已开始下载')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    downloading.value = false
+  }
+}
 
 const epochSeries = ref<number[]>([])
 const trainLossSeries = ref<(number | null)[]>([])
@@ -376,6 +395,7 @@ function onEvent(event: TrainingEvent): void {
     case 'started':
       status.value = 'running'
       totalEpochs.value = toNumber(event.total_epochs) ?? 0
+      isImageTask.value = event.mode === 'image'
       void pushLog(
         `训练开始：共 ${event.total_epochs} 个 epoch，输入维度 ${event.input_dim}`,
       )
@@ -448,6 +468,7 @@ function onEvent(event: TrainingEvent): void {
       status.value = 'completed'
       finalLoss.value = toNumber(event.final_loss)
       finalAccuracy.value = toNumber(event.final_accuracy)
+      recordId.value = toNumber(event.record_id)
       void pushLog('训练完成，训练记录已保存')
       toast.success('训练完成')
       break
@@ -679,6 +700,21 @@ onBeforeUnmount(() => {
             class="mt-3 text-xs leading-relaxed text-danger"
           >
             {{ failureReason }}
+          </p>
+          <AppButton
+            v-if="recordId && !isImageTask"
+            class="mt-3 w-full"
+            variant="secondary"
+            :loading="downloading"
+            @click="downloadTrainedModel"
+          >
+            下载模型（.pt）
+          </AppButton>
+          <p
+            v-else-if="recordId && isImageTask"
+            class="mt-3 text-[10px] leading-relaxed text-muted"
+          >
+            图像线不落盘权重，暂不提供下载
           </p>
         </AppCard>
       </div>

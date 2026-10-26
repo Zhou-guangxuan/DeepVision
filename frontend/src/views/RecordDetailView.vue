@@ -6,6 +6,7 @@ import type { ECharts } from 'echarts'
 
 import {
   diagnoseRecord,
+  downloadModel,
   getImageEval,
   getRecord,
   rerunRecord,
@@ -20,6 +21,7 @@ import AppCard from '@/components/ui/AppCard.vue'
 import { NODE_HEIGHT } from '@/types/graph'
 import type { GraphEdge, GraphNode } from '@/types/graph'
 import { useToastStore } from '@/stores/toast'
+import { saveBlob } from '@/utils/download'
 
 /**
  * 记录详情页（只读）：拓扑、超参、指标曲线、诊断结果。
@@ -36,6 +38,7 @@ const diagnosis = ref<DiagnosisResult | null>(null)
 const imageEval = ref<ImageEvalData | null>(null)
 const loading = ref(false)
 const rerunning = ref(false)
+const downloading = ref(false)
 
 const chartRef = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
@@ -203,6 +206,19 @@ async function onRerun(): Promise<void> {
   }
 }
 
+async function onDownloadModel(): Promise<void> {
+  downloading.value = true
+  try {
+    const blob = await downloadModel(recordId)
+    saveBlob(blob, `deepvision-record-${recordId}.pt`)
+    toast.success('模型已开始下载')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    downloading.value = false
+  }
+}
+
 function handleResize(): void {
   chart?.resize()
 }
@@ -241,6 +257,16 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <div class="flex items-center gap-2">
+        <AppButton
+          variant="secondary"
+          size="sm"
+          :disabled="!record?.model_file_url"
+          :loading="downloading"
+          title="下载该记录保存的模型权重（图像线不落盘权重）"
+          @click="onDownloadModel"
+        >
+          下载模型
+        </AppButton>
         <AppButton
           variant="secondary"
           size="sm"
