@@ -71,6 +71,8 @@ export interface CurvePoint {
   train_loss: number | null
   val_loss: number | null
   accuracy: number | null
+  /** 该 epoch 结束时的累计耗时（毫秒）；旧记录可能为空 */
+  elapsed_ms?: number | null
 }
 
 export interface CompareRun {

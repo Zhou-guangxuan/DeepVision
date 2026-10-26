@@ -54,10 +54,14 @@ const trainLossSeries = ref<(number | null)[]>([])
 const valLossSeries = ref<(number | null)[]>([])
 const accuracySeries = ref<(number | null)[]>([])
 
-/** 逐层权重范数 / 标准差：node_id → 每个 epoch 的统计量 */
-const layerHistory = ref<Record<string, { norm: number; std: number }[]>>({})
+/** 逐层权重范数 / 标准差 / 激活分位数：node_id → 每个 epoch 的统计量 */
+const layerHistory = ref<
+  Record<string, { norm: number; std: number; p95: number }[]>
+>({})
 const layerOrder = ref<string[]>([])
-const layerMetric = ref<'weight_norm' | 'weight_std'>('weight_norm')
+const layerMetric = ref<'weight_norm' | 'weight_std' | 'activation_p95'>(
+  'weight_norm',
+)
 
 interface GraphProfileNode {
   node_id: string
@@ -321,7 +325,12 @@ function layerOption(): echarts.EChartsOption {
     },
     yAxis: {
       type: 'value',
-      name: layerMetric.value === 'weight_norm' ? '‖W‖₁' : 'σ(W)',
+      name:
+        layerMetric.value === 'weight_norm'
+          ? '‖W‖₁'
+          : layerMetric.value === 'weight_std'
+            ? 'σ(W)'
+            : '|激活| P95',
       nameTextStyle: { color: '#94a3b8', fontSize: 10 },
       axisLabel: { color: '#94a3b8', fontSize: 10 },
       splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)' } },
@@ -332,7 +341,11 @@ function layerOption(): echarts.EChartsOption {
       smooth: true,
       showSymbol: false,
       data: (layerHistory.value[nodeId] ?? []).map((point) =>
-        layerMetric.value === 'weight_norm' ? point.norm : point.std,
+        layerMetric.value === 'weight_norm'
+          ? point.norm
+          : layerMetric.value === 'weight_std'
+            ? point.std
+            : point.p95,
       ),
       itemStyle: { color: LAYER_COLORS[index % LAYER_COLORS.length] },
       animationDuration: 300,
@@ -346,7 +359,9 @@ function updateLayerChart(): void {
   layerChart.setOption(layerOption(), true)
 }
 
-function setLayerMetric(metric: 'weight_norm' | 'weight_std'): void {
+function setLayerMetric(
+  metric: 'weight_norm' | 'weight_std' | 'activation_p95',
+): void {
   layerMetric.value = metric
   updateLayerChart()
 }
@@ -403,6 +418,7 @@ function onEvent(event: TrainingEvent): void {
             node_id?: string
             weight_norm?: number
             weight_std?: number
+            activation_p95?: number
           }
           const nodeId = String(item.node_id ?? '')
           if (!nodeId) continue
@@ -415,6 +431,7 @@ function onEvent(event: TrainingEvent): void {
             {
               norm: Number(item.weight_norm ?? 0),
               std: Number(item.weight_std ?? 0),
+              p95: Number(item.activation_p95 ?? 0),
             },
           ]
         }
@@ -570,6 +587,7 @@ onBeforeUnmount(() => {
               v-for="item in [
                 { key: 'weight_norm', label: '范数' },
                 { key: 'weight_std', label: '标准差' },
+                { key: 'activation_p95', label: '激活 P95' },
               ]"
               :key="item.key"
               type="button"
@@ -584,7 +602,11 @@ onBeforeUnmount(() => {
                   ? { background: 'var(--bg-elevated)' }
                   : {}
               "
-              @click="setLayerMetric(item.key as 'weight_norm' | 'weight_std')"
+              @click="
+                setLayerMetric(
+                  item.key as 'weight_norm' | 'weight_std' | 'activation_p95',
+                )
+              "
             >
               {{ item.label }}
             </button>

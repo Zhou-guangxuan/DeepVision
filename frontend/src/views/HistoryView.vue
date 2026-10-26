@@ -28,6 +28,7 @@ const MAX_SELECT = 4
 const ALIGN_ITEMS = [
   { key: 'epoch' as const, label: '按 Epoch' },
   { key: 'progress' as const, label: '按进度' },
+  { key: 'time' as const, label: '按耗时' },
 ]
 
 const router = useRouter()
@@ -37,7 +38,7 @@ const records = ref<TrainingRecord[]>([])
 const loading = ref(false)
 const selected = ref<number[]>([])
 const runs = ref<CompareRun[]>([])
-const align = ref<'epoch' | 'progress'>('epoch')
+const align = ref<'epoch' | 'progress' | 'time'>('epoch')
 const comparing = ref(false)
 
 const diagnosis = ref<DiagnosisResult | null>(null)
@@ -113,9 +114,18 @@ async function runCompare(): Promise<void> {
   }
 }
 
-function xOf(run: CompareRun, index: number, epoch: number | null): number {
+function xOf(
+  run: CompareRun,
+  index: number,
+  epoch: number | null,
+  elapsedMs: number | null,
+): number | null {
   if (align.value === 'progress') {
     return ((index + 1) / Math.max(run.history.length, 1)) * 100
+  }
+  if (align.value === 'time') {
+    // 按实际训练耗时（秒）；旧记录没有该字段时跳过该点
+    return elapsedMs === null ? null : elapsedMs / 1000
   }
   return epoch ?? index + 1
 }
@@ -125,23 +135,30 @@ function renderCharts(): void {
   if (!lossChart) lossChart = echarts.init(lossRef.value)
   if (!accChart) accChart = echarts.init(accRef.value)
 
-  const axisName = align.value === 'progress' ? '训练进度 (%)' : 'Epoch'
+  const axisName =
+    align.value === 'progress'
+      ? '训练进度 (%)'
+      : align.value === 'time'
+        ? '训练耗时 (s)'
+        : 'Epoch'
 
   const lossSeries = runs.value.flatMap((run, runIndex) => {
     const color = RUN_COLORS[runIndex % RUN_COLORS.length]
     const train = run.history
-      .map((point, index) =>
-        point.train_loss === null
+      .map((point, index) => {
+        const x = xOf(run, index, point.epoch, point.elapsed_ms ?? null)
+        return x === null || point.train_loss === null
           ? null
-          : [xOf(run, index, point.epoch), point.train_loss],
-      )
+          : [x, point.train_loss]
+      })
       .filter((item): item is [number, number] => item !== null)
     const val = run.history
-      .map((point, index) =>
-        point.val_loss === null
+      .map((point, index) => {
+        const x = xOf(run, index, point.epoch, point.elapsed_ms ?? null)
+        return x === null || point.val_loss === null
           ? null
-          : [xOf(run, index, point.epoch), point.val_loss],
-      )
+          : [x, point.val_loss]
+      })
       .filter((item): item is [number, number] => item !== null)
 
     return [
@@ -172,11 +189,12 @@ function renderCharts(): void {
     smooth: true,
     showSymbol: false,
     data: run.history
-      .map((point, index) =>
-        point.accuracy === null
+      .map((point, index) => {
+        const x = xOf(run, index, point.epoch, point.elapsed_ms ?? null)
+        return x === null || point.accuracy === null
           ? null
-          : [xOf(run, index, point.epoch), point.accuracy],
-      )
+          : [x, point.accuracy]
+      })
       .filter((item): item is [number, number] => item !== null),
     itemStyle: { color: RUN_COLORS[runIndex % RUN_COLORS.length] },
     lineStyle: { width: 1.6 },
@@ -260,7 +278,7 @@ function severityColor(severity: string): string {
   return 'var(--info)'
 }
 
-function setAlign(next: 'epoch' | 'progress'): void {
+function setAlign(next: 'epoch' | 'progress' | 'time'): void {
   align.value = next
   if (runs.value.length > 0) renderCharts()
 }
