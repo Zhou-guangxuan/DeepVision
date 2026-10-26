@@ -143,6 +143,8 @@ export interface ImageEvalSample {
   prediction: number
   probability: number
   pixels: number[][]
+  /** 多模态记录附带：该样本的表格特征 */
+  tabular?: number[]
 }
 
 export interface ImageEvalData {
@@ -150,6 +152,8 @@ export interface ImageEvalData {
   size: number
   confusion: number[][]
   samples: ImageEvalSample[]
+  /** 多模态记录附带：表格特征名 */
+  feature_names?: string[]
 }
 
 /** 图像训练的混淆矩阵与样本预测 */

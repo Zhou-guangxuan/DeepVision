@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 
 import type { ImageEvalData, ImageEvalSample } from '@/api/records'
 
 /**
- * 图像训练评估：混淆矩阵 + 样本预测网格。
- * 像素矩阵直接画到 canvas，避免 256 个 DOM 节点。
+ * 图像 / 多模态训练评估：混淆矩阵 + 样本预测网格。
+ * 像素矩阵直接画到 canvas，避免 256 个 DOM 节点；
+ * 多模态记录会在每个样本下方附带表格特征。
  */
 const props = defineProps<ImageEvalData>()
+
+const featureNames = computed(() => props.feature_names ?? [])
 
 function labelOf(index: number): string {
   return props.classes[index] ?? `类别 ${index}`
@@ -110,6 +114,20 @@ function drawSample(
             {{ labelOf(sample.prediction) }} ·
             {{ (sample.probability * 100).toFixed(0) }}%
           </span>
+          <div
+            v-if="sample.tabular && featureNames.length > 0"
+            class="flex w-full flex-wrap justify-center gap-0.5"
+          >
+            <span
+              v-for="(value, featureIndex) in sample.tabular"
+              :key="featureIndex"
+              class="rounded-sm px-0.5 text-[8px] text-secondary"
+              :style="{ background: 'rgba(148, 163, 184, 0.12)' }"
+              :title="featureNames[featureIndex]"
+            >
+              {{ featureNames[featureIndex]?.[0] ?? 'F' }}{{ value.toFixed(2) }}
+            </span>
+          </div>
         </div>
       </div>
       <p class="mt-2 text-[10px] leading-relaxed text-muted">

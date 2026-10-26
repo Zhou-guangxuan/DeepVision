@@ -51,7 +51,8 @@ const finalLoss = ref<number | null>(null)
 const finalAccuracy = ref<number | null>(null)
 /** 训练完成后用于下载模型 */
 const recordId = ref<number | null>(null)
-const isImageTask = ref(false)
+/** 图像 / 多模态线不落盘权重，不提供下载 */
+const weightlessTask = ref(false)
 const downloading = ref(false)
 
 async function downloadTrainedModel(): Promise<void> {
@@ -395,7 +396,8 @@ function onEvent(event: TrainingEvent): void {
     case 'started':
       status.value = 'running'
       totalEpochs.value = toNumber(event.total_epochs) ?? 0
-      isImageTask.value = event.mode === 'image'
+      weightlessTask.value =
+        event.mode === 'image' || event.mode === 'multimodal'
       void pushLog(
         `训练开始：共 ${event.total_epochs} 个 epoch，输入维度 ${event.input_dim}`,
       )
@@ -702,7 +704,7 @@ onBeforeUnmount(() => {
             {{ failureReason }}
           </p>
           <AppButton
-            v-if="recordId && !isImageTask"
+            v-if="recordId && !weightlessTask"
             class="mt-3 w-full"
             variant="secondary"
             :loading="downloading"
@@ -711,10 +713,10 @@ onBeforeUnmount(() => {
             下载模型（.pt）
           </AppButton>
           <p
-            v-else-if="recordId && isImageTask"
+            v-else-if="recordId && weightlessTask"
             class="mt-3 text-[10px] leading-relaxed text-muted"
           >
-            图像线不落盘权重，暂不提供下载
+            图像 / 多模态线不落盘权重，暂不提供下载
           </p>
         </AppCard>
       </div>

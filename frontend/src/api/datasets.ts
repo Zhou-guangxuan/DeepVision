@@ -20,6 +20,8 @@ export interface DatasetStats {
   size?: number | null
   samples?: number | null
   synthetic?: string | null
+  tabular_features?: string[]
+  tabular_dim?: number | null
 }
 
 export interface DatasetDetail {
@@ -100,5 +102,43 @@ export async function previewImageDataset(
   const { data } = await http.get<ImagePreview>(`/api/datasets/${id}/preview`, {
     params: { count },
   })
+  return data
+}
+
+export interface MultimodalSample {
+  label: number
+  pixels: number[][]
+  tabular: number[]
+}
+
+export interface MultimodalPreview {
+  size: number
+  classes: string[]
+  feature_names: string[]
+  samples: MultimodalSample[]
+}
+
+/** 生成内置多模态数据集（图像 + 4 个表格特征） */
+export async function createMultimodalDataset(
+  samples = 1200,
+  size = 16,
+): Promise<DatasetDetail> {
+  const { data } = await http.post<DatasetDetail>(
+    '/api/datasets/multimodal',
+    null,
+    { params: { samples, size } },
+  )
+  return data
+}
+
+/** 多模态数据集样本预览 */
+export async function previewMultimodalDataset(
+  id: number,
+  count = 8,
+): Promise<MultimodalPreview> {
+  const { data } = await http.get<MultimodalPreview>(
+    `/api/datasets/${id}/preview/multimodal`,
+    { params: { count } },
+  )
   return data
 }

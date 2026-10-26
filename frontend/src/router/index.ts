@@ -51,6 +51,11 @@ const router = createRouter({
       component: () => import('@/views/ImageView.vue'),
     },
     {
+      path: '/multimodal',
+      name: 'multimodal',
+      component: () => import('@/views/MultimodalView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/workspace',
     },

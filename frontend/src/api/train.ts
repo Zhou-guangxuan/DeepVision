@@ -42,6 +42,18 @@ export async function startImageTraining(
   return data
 }
 
+/** 多模态实验线：图像 + 表格特征融合 */
+export async function startMultimodalTraining(
+  datasetId: number,
+  hyperparameters: Hyperparameters,
+): Promise<StartTrainingResponse> {
+  const { data } = await http.post<StartTrainingResponse>(
+    '/api/train/multimodal',
+    { dataset_id: datasetId, hyperparameters },
+  )
+  return data
+}
+
 export interface CodeLineRange {
   definition: number[]
   forward: number[]
