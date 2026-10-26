@@ -69,7 +69,11 @@ def main() -> int:
     print(f"hash prefix : {user.password_hash[:24]}...")
     print(
         "plaintext   : "
-        + ("NO (argon2id hash)" if args.password not in user.password_hash else "YES (BUG!)")
+        + (
+            "NO (argon2id hash)"
+            if args.password not in user.password_hash
+            else "YES (BUG!)"
+        )
     )
     return 0 if verified else 1
 
