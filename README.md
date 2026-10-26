@@ -190,7 +190,7 @@ AI-web/
 | 数据集 | `POST /api/datasets`、`GET /api/datasets`、`GET /api/datasets/{id}`、`POST /api/datasets/image`、`GET /api/datasets/{id}/preview` |
 | 拓扑 | `POST /api/graph/validate` |
 | 表格训练 | `POST /api/train`、`POST /api/train/{id}/stop`、`WS /ws/train/{id}`、`GET /api/train/{id}/code` |
-| 记录 | `GET /api/records`、`GET /api/records/{id}`、`DELETE /api/records/{id}` |
+| 记录 | `GET /api/records`、`GET /api/records/{id}`、`DELETE /api/records/{id}`、`GET /api/records/{id}/model`（下载权重） |
 | 诊断 / 对比 | `GET /api/records/{id}/diagnosis`、`GET /api/records/compare?ids=`、`POST /api/records/{id}/rerun`、`GET /api/records/{id}/code` |
 | 实验室 | `POST /api/lab/train`、`WS /ws/lab/{id}`、`pause/resume/stop`、`GET /api/lab/{id}/inspect`、`projection`、`attention`、`diagnosis`、`compression`、`snapshots`、`snapshot`、`attribution`、`POST /api/lab/tune` |
 | 图像 | `POST /api/train/image`、`GET /api/records/{id}/image-eval` |
