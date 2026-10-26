@@ -41,13 +41,13 @@ export interface TeachingTask {
 const BASE: TeachingPreset = {
   inputUnits: 2,
   outputUnits: 2,
-  hiddenLayers: [8, 8],
+  hiddenLayers: [64, 64],
   activation: 'relu',
   init: 'he',
   optimizer: 'adam',
   learningRate: 0.05,
-  batchSize: 32,
-  epochs: 60,
+  batchSize: 64,
+  epochs: 200,
   l2: 0,
   dropout: 0,
 }
@@ -58,7 +58,7 @@ export const TEACHING_TASKS: TeachingTask[] = [
     kind: 'goal',
     title: '任务一：把双螺旋分开',
     goal: '理解「隐藏层 + 非线性激活」如何把线性不可分的数据分开',
-    hint: '保持默认参数直接训练，观察验证准确率能否超过 0.9。',
+    hint: '预设已是「64×64 两隐藏层、学习率 0.05、200 轮」，直接训练，观察验证准确率能否超过 0.9。',
     preset: { ...BASE },
     success: { metric: 'accuracy', threshold: 0.9 },
     checkpoints: [
@@ -91,8 +91,14 @@ export const TEACHING_TASKS: TeachingTask[] = [
     kind: 'pitfall',
     title: '错误示范：学习率过大',
     goal: '亲眼看到学习率过大会让 loss 震荡甚至发散',
-    hint: '学习率被设为 0.5，直接训练，观察曲线是否剧烈跳动。',
-    preset: { ...BASE, learningRate: 0.5, epochs: 40 },
+    hint: '学习率被设为 1.0、批大小 8，直接训练，观察曲线是否剧烈跳动。',
+    preset: {
+      ...BASE,
+      hiddenLayers: [8, 8],
+      learningRate: 1.0,
+      batchSize: 8,
+      epochs: 40,
+    },
     success: { metric: 'issue', codes: ['diverged', 'lr_too_high'] },
     checkpoints: [
       {
