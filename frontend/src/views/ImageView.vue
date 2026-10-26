@@ -149,9 +149,6 @@ onMounted(() => {
           ← 工作台
         </AppButton>
         <span class="text-sm font-medium text-primary">图像实验</span>
-        <span class="text-[11px] text-muted">
-          内置合成图形 · 固定小卷积网络 · 与表格线共用训练记录
-        </span>
       </div>
       <AppButton variant="secondary" size="sm" @click="load">刷新</AppButton>
     </header>
@@ -159,9 +156,12 @@ onMounted(() => {
     <div class="grid min-h-0 flex-1 gap-4 overflow-auto p-4 lg:grid-cols-3">
       <!-- 数据集 -->
       <AppCard class="lg:col-span-1">
-        <h2 class="text-sm font-medium text-primary">合成数据集</h2>
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-medium text-primary">合成数据集</h2>
+          <span class="text-[10px] text-muted">{{ datasets.length }} 个</span>
+        </div>
         <p class="mt-1 text-[11px] leading-relaxed text-muted">
-          随机生成「圆形 / 方形」两类 16×16 灰度图，带位置抖动与噪声，完全离线。
+          随机生成「圆形 / 方形」两类灰度图，带位置抖动与噪声，完全离线。
         </p>
 
         <div class="mt-3 grid grid-cols-2 gap-2">
@@ -194,12 +194,12 @@ onMounted(() => {
           生成图像数据集
         </AppButton>
 
-        <div class="mt-4 space-y-1.5">
+        <div class="mt-4 max-h-[300px] space-y-1.5 overflow-auto pr-1">
           <button
             v-for="dataset in datasets"
             :key="dataset.id"
             type="button"
-            class="w-full rounded-md border px-2.5 py-2 text-left text-[11px]"
+            class="flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-[11px] transition-colors duration-fast"
             :style="{
               borderColor:
                 selected?.id === dataset.id
@@ -212,25 +212,31 @@ onMounted(() => {
             }"
             @click="select(dataset)"
           >
-            <span class="text-secondary">{{ dataset.name }}</span>
-            <span class="ml-2 text-muted">
-              {{ dataset.sample_count }} 张 · {{ dataset.feature_count }} 像素
+            <span class="truncate text-secondary">{{ dataset.name }}</span>
+            <span class="shrink-0 text-muted">
+              {{ dataset.sample_count }} 张
             </span>
           </button>
-          <p
+          <div
             v-if="!loading && datasets.length === 0"
-            class="text-[11px] text-muted"
+            class="rounded-md border border-dashed px-3 py-4 text-center text-[11px] text-muted"
+            :style="{ borderColor: 'var(--border-subtle)' }"
           >
-            还没有图像数据集，点上面的按钮生成。
-          </p>
+            还没有图像数据集，点上面的按钮生成
+          </div>
         </div>
       </AppCard>
 
       <!-- 预览 -->
       <AppCard class="lg:col-span-2">
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-medium text-primary">样本预览</h2>
-          <span class="text-[11px] text-muted">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-baseline gap-2">
+            <h2 class="text-sm font-medium text-primary">样本预览</h2>
+            <span v-if="selected" class="text-[11px] text-muted">
+              {{ selected.name }}
+            </span>
+          </div>
+          <span class="shrink-0 text-[11px] text-muted">
             {{ preview?.classes.join(' / ') ?? '' }}
           </span>
         </div>
@@ -254,15 +260,22 @@ onMounted(() => {
             </span>
           </div>
         </div>
-        <p v-else class="mt-3 text-[11px] text-muted">
-          生成数据集后可预览样本。
-        </p>
-
         <div
-          class="mt-4 border-t pt-3"
+          v-else
+          class="mt-3 grid min-h-[150px] place-items-center rounded-md border border-dashed text-[11px] text-muted"
           :style="{ borderColor: 'var(--border-subtle)' }"
         >
-          <h3 class="text-xs font-medium text-secondary">训练参数</h3>
+          生成数据集后可预览样本
+        </div>
+
+        <div
+          class="mt-5 border-t pt-4"
+          :style="{ borderColor: 'var(--border-subtle)' }"
+        >
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-medium text-secondary">训练参数</h3>
+            <span class="text-[10px] text-muted">固定结构 · 不可编辑</span>
+          </div>
           <div class="mt-2 grid grid-cols-3 gap-2">
             <label class="text-[11px] text-muted">
               轮数
@@ -300,7 +313,7 @@ onMounted(() => {
             </label>
           </div>
           <AppButton
-            class="mt-3"
+            class="mt-3 w-full"
             :disabled="!canTrain"
             :loading="training"
             @click="train"
@@ -308,8 +321,8 @@ onMounted(() => {
             开始训练（固定 CNN）
           </AppButton>
           <p class="mt-2 text-[10px] leading-relaxed text-muted">
-            图像线使用固定的两层卷积 + 池化 +
-            全连接，不支持编辑拓扑；训练曲线与记录和表格线一致。
+            两层卷积 + 池化 +
+            全连接；训练曲线与记录和表格线一致，训练后自动生成混淆矩阵。
           </p>
         </div>
       </AppCard>
