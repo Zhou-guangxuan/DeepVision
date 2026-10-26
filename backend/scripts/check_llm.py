@@ -60,12 +60,10 @@ def main() -> int:
         "Content-Type": "application/json",
     }
 
-    verify: bool | ssl.SSLContext = True
-    if not settings.llm_verify_ssl:
-        verify = False
-    else:
-        # 与后端一致：用系统证书库，而不是 certifi
-        verify = ssl.create_default_context()
+    # 与后端一致：用系统证书库，而不是 certifi
+    verify: bool | ssl.SSLContext = (
+        ssl.create_default_context() if settings.llm_verify_ssl else False
+    )
 
     print(f"\nPOST {url}")
 
@@ -80,7 +78,9 @@ def main() -> int:
         print(f"请求失败：{type(exc).__name__}: {exc}")
         print("排查：")
         print("  1) 脚本不使用系统代理（trust_env=False），确认能直连该地址")
-        print("  2) 公司代理注入自签证书导致 TLS 失败时，可临时设 LLM_VERIFY_SSL=false 测试")
+        print(
+            "  2) 公司代理注入自签证书导致 TLS 失败时，可临时设 LLM_VERIFY_SSL=false 测试"
+        )
         return 2
 
     print(f"HTTP {response.status_code}")
