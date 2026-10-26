@@ -94,6 +94,38 @@ def create_image_training(
     return TrainStartResponse(task_id=task.task_id, total_epochs=int(hyper["epochs"]))
 
 
+@router.post(
+    "/multimodal",
+    response_model=TrainStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="创建多模态训练任务（图像 + 表格融合）",
+)
+def create_multimodal_training(
+    payload: ImageTrainRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TrainStartResponse:
+    dataset = db.get(Dataset, payload.dataset_id)
+    if dataset is None:
+        raise APIError(status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在")
+    if dataset.user_id != current_user.id:
+        raise APIError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "无权访问该数据集")
+    if dataset.kind != "multimodal":
+        raise APIError(
+            status.HTTP_400_BAD_REQUEST,
+            "NOT_MULTIMODAL_DATASET",
+            "该数据集不是多模态数据集",
+        )
+
+    hyper = payload.hyperparameters.model_dump()
+    task = training.create_multimodal_task(
+        user_id=current_user.id,
+        dataset_id=payload.dataset_id,
+        hyper=hyper,
+    )
+    return TrainStartResponse(task_id=task.task_id, total_epochs=int(hyper["epochs"]))
+
+
 @router.post("/{task_id}/stop", response_model=StopResponse, summary="停止训练")
 def stop_training(
     task_id: str,

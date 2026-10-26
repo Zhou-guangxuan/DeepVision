@@ -208,7 +208,7 @@ def rerun_record(
     hyper.setdefault("batch_size", 32)
     hyper.setdefault("learning_rate", 0.001)
 
-    # 图像实验线不走 DAG 校验：用同一份图像数据集与超参重新创建固定 CNN 任务
+    # 图像 / 多模态实验线不走 DAG 校验：用同一份数据集与超参重新创建固定模型任务
     if dataset.kind == "image":
         image_task = training.create_image_task(
             user_id=current_user.id,
@@ -217,6 +217,16 @@ def rerun_record(
         )
         return TrainStartResponse(
             task_id=image_task.task_id, total_epochs=int(hyper["epochs"])
+        )
+
+    if dataset.kind == "multimodal":
+        multimodal_task = training.create_multimodal_task(
+            user_id=current_user.id,
+            dataset_id=record.dataset_id,
+            hyper=hyper,
+        )
+        return TrainStartResponse(
+            task_id=multimodal_task.task_id, total_epochs=int(hyper["epochs"])
         )
 
     config = ModelConfigIn(**record.network_config)

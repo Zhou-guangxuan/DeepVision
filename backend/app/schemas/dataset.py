@@ -26,6 +26,9 @@ class DatasetStats(BaseModel):
     size: int | None = None
     samples: int | None = None
     synthetic: str | None = None
+    # 多模态数据集（kind="multimodal"）的表格特征
+    tabular_features: list[str] = Field(default_factory=list)
+    tabular_dim: int | None = None
 
 
 class DatasetResponse(BaseModel):

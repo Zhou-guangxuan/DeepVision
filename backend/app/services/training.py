@@ -29,7 +29,7 @@ from app.models.record import (
     STATUS_SUCCESS,
     TrainingRecord,
 )
-from app.services import image_dataset
+from app.services import image_dataset, multimodal_dataset
 from app.services.dag_model import build_dag_net
 from app.services.preprocessing import prepare_dataset
 
@@ -57,6 +57,37 @@ class ImageCNN(nn.Module):
 
     def forward(self, tensor: torch.Tensor) -> torch.Tensor:
         return self.classifier(self.features(tensor))
+
+
+class FusionNet(nn.Module):
+    """多模态线：图像分支 + 表格分支，拼接后分类。"""
+
+    def __init__(self, num_classes: int, size: int, tabular_dim: int) -> None:
+        super().__init__()
+        self.image_features = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(8, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        reduced = max(1, size // 4)
+        image_dim = 16 * reduced * reduced
+        self.tabular_features = nn.Sequential(
+            nn.Linear(tabular_dim, 16),
+            nn.ReLU(),
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(image_dim + 16, 32),
+            nn.ReLU(),
+            nn.Linear(32, num_classes),
+        )
+
+    def forward(self, image: torch.Tensor, tabular: torch.Tensor) -> torch.Tensor:
+        image_feature = self.image_features(image).flatten(1)
+        tabular_feature = self.tabular_features(tabular)
+        return self.classifier(torch.cat([image_feature, tabular_feature], dim=1))
 
 
 @dataclass
@@ -123,6 +154,24 @@ def create_image_task(*, user_id: int, dataset_id: int, hyper: dict) -> Training
     return task
 
 
+def create_multimodal_task(
+    *, user_id: int, dataset_id: int, hyper: dict
+) -> TrainingTask:
+    task = TrainingTask(
+        task_id=uuid4().hex,
+        user_id=user_id,
+        dataset_id=dataset_id,
+        config={"kind": "multimodal"},
+        plan={},
+        hyper=hyper,
+        total_epochs=int(hyper.get("epochs", 20)),
+        mode="multimodal",
+    )
+    with _LOCK:
+        _TASKS[task.task_id] = task
+    return task
+
+
 def get_task(task_id: str) -> TrainingTask | None:
     with _LOCK:
         return _TASKS.get(task_id)
@@ -149,7 +198,11 @@ def start(task: TrainingTask) -> None:
     if task.thread is not None:
         return
     task.status = "running"
-    target = _run_image_training if task.mode == "image" else _run_training
+    targets = {
+        "image": _run_image_training,
+        "multimodal": _run_multimodal_training,
+    }
+    target = targets.get(task.mode, _run_training)
     task.thread = threading.Thread(target=target, args=(task,), daemon=True)
     task.thread.start()
 
@@ -676,6 +729,205 @@ def _run_image_training(task: TrainingTask) -> None:
             "val_loss": round(val_loss, 6) if last_epoch else None,
             "accuracy": round(accuracy, 6) if last_epoch else None,
             "image_eval": image_eval,
+        }
+    except Exception as exc:  # noqa: BLE001
+        failure = str(exc)
+        result_status = STATUS_FAILED
+    finally:
+        duration = round(time.perf_counter() - started, 3)
+        try:
+            record = _finalize(
+                session,
+                task,
+                result_status,
+                metrics,
+                None,
+                failure,
+                duration,
+                last_epoch,
+            )
+            record_id = record.id
+        except Exception as exc:  # noqa: BLE001
+            record_id = None
+            failure = failure or str(exc)
+        finally:
+            session.close()
+
+        task.status = "success" if result_status == STATUS_SUCCESS else result_status
+
+        if result_status == STATUS_SUCCESS:
+            _emit(
+                task,
+                {
+                    "type": "completed",
+                    "final_loss": metrics.get("val_loss"),
+                    "final_accuracy": metrics.get("accuracy"),
+                    "record_id": record_id,
+                    "epochs": last_epoch,
+                },
+            )
+        elif result_status == STATUS_INTERRUPTED:
+            _emit(task, {"type": "stopped", "epoch": last_epoch})
+        else:
+            _emit(task, {"type": "failed", "reason": failure or "训练失败"})
+
+
+def _run_multimodal_training(task: TrainingTask) -> None:
+    """多模态线：图像分支 + 表格分支融合。
+
+    事件结构与图像线一致（`image_eval`），额外附带表格特征，
+    前端复用同一个评估面板。
+    """
+    session = SessionLocal()
+    started = time.perf_counter()
+    metrics: dict = {}
+    failure: str | None = None
+    last_epoch = 0
+    result_status = STATUS_FAILED
+
+    try:
+        dataset = session.get(Dataset, task.dataset_id)
+        if dataset is None:
+            raise RuntimeError("数据集不存在")
+        if dataset.user_id != task.user_id:
+            raise RuntimeError("无权访问该数据集")
+        if dataset.kind != "multimodal":
+            raise RuntimeError("该数据集不是多模态数据集")
+
+        x, tabular, y = multimodal_dataset.load(dataset.file_path)
+        num_classes = len(dataset.stats.get("classes", [])) or 2
+        size = int(dataset.stats.get("size", x.shape[2]))
+        feature_names = list(
+            dataset.stats.get("tabular_features", multimodal_dataset.TABULAR_FEATURES)
+        )
+
+        seed = int(task.hyper.get("seed", 42))
+        torch.manual_seed(seed)
+
+        rng = np.random.default_rng(42)
+        order = rng.permutation(len(x))
+        split = int(len(x) * 0.8)
+        train_index, val_index = order[:split], order[split:]
+
+        x_train = torch.from_numpy(x[train_index])
+        t_train = torch.from_numpy(tabular[train_index])
+        y_train = torch.from_numpy(y[train_index])
+        x_val = torch.from_numpy(x[val_index])
+        t_val = torch.from_numpy(tabular[val_index])
+        y_val = torch.from_numpy(y[val_index])
+
+        model = FusionNet(num_classes, size, tabular.shape[1])
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=float(task.hyper.get("learning_rate", 0.001)),
+        )
+        loss_fn = nn.CrossEntropyLoss()
+
+        batch_size = int(task.hyper.get("batch_size", 32))
+        epochs = int(task.hyper.get("epochs", task.total_epochs))
+
+        _emit(
+            task,
+            {
+                "type": "started",
+                "task_id": task.task_id,
+                "total_epochs": epochs,
+                "input_dim": size * size + tabular.shape[1],
+                "input_layers": 2,
+                "output_layers": 1,
+                "task": "classification",
+                "classes": list(dataset.stats.get("classes", [])),
+                "mode": "multimodal",
+            },
+        )
+
+        for epoch in range(1, epochs + 1):
+            if task.stop_event.is_set():
+                result_status = STATUS_INTERRUPTED
+                break
+
+            model.train()
+            permutation = torch.randperm(len(x_train))
+            total_loss = 0.0
+            batches = 0
+
+            for offset in range(0, len(x_train), batch_size):
+                indices = permutation[offset : offset + batch_size]
+                optimizer.zero_grad()
+                logits = model(x_train[indices], t_train[indices])
+                loss = loss_fn(logits, y_train[indices])
+                loss.backward()
+                optimizer.step()
+                total_loss += float(loss.item())
+                batches += 1
+
+            model.eval()
+            with torch.no_grad():
+                logits = model(x_val, t_val)
+                val_loss = float(loss_fn(logits, y_val).item())
+                accuracy = float((logits.argmax(dim=1) == y_val).float().mean().item())
+
+            last_epoch = epoch
+            _emit(
+                task,
+                {
+                    "type": "epoch",
+                    "epoch": epoch,
+                    "total_epochs": epochs,
+                    "train_loss": round(total_loss / max(batches, 1), 6),
+                    "val_loss": round(val_loss, 6),
+                    "accuracy": round(accuracy, 6),
+                    "grad_norm": 0.0,
+                    "layer_stats": [],
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                },
+            )
+
+        if result_status != STATUS_INTERRUPTED:
+            result_status = STATUS_SUCCESS
+
+        model.eval()
+        with torch.no_grad():
+            logits = model(x_val, t_val)
+            probabilities = torch.softmax(logits, dim=1)
+            predictions = logits.argmax(dim=1)
+
+            confusion = torch.zeros((num_classes, num_classes), dtype=torch.int64)
+            for truth, guess in zip(y_val.tolist(), predictions.tolist(), strict=True):
+                confusion[truth, guess] += 1
+
+            sample_count = min(12, len(x_val))
+            samples = [
+                {
+                    "label": int(y_val[index]),
+                    "prediction": int(predictions[index]),
+                    "probability": round(
+                        float(probabilities[index, predictions[index]]), 4
+                    ),
+                    "pixels": (x_val[index, 0].numpy() * 255)
+                    .round()
+                    .astype(int)
+                    .tolist(),
+                    "tabular": [
+                        round(float(value), 3) for value in t_val[index].tolist()
+                    ],
+                }
+                for index in range(sample_count)
+            ]
+
+        multimodal_eval = {
+            "classes": list(dataset.stats.get("classes", [])),
+            "size": size,
+            "feature_names": feature_names,
+            "confusion": confusion.tolist(),
+            "samples": samples,
+        }
+        _emit(task, {"type": "image_eval", **multimodal_eval})
+
+        metrics = {
+            "val_loss": round(val_loss, 6) if last_epoch else None,
+            "accuracy": round(accuracy, 6) if last_epoch else None,
+            "image_eval": multimodal_eval,
         }
     except Exception as exc:  # noqa: BLE001
         failure = str(exc)
