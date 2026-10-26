@@ -18,15 +18,17 @@
 
 DeepVision 把这五件事变成**可看、可问、可验证**：浏览器里搭网络、训练时逐层可观测、训练后用规则诊断曲线、实验配置完整落库可复现。
 
-### 1.2 三条实验线
+### 1.2 四条实验线
 
 | 实验线 | 入口 | 适合谁 | 能做什么 |
 | --- | --- | --- | --- |
 | **表格实验** | `/workspace` | 想训练自己数据的同学 | 拖拽搭任意前馈 DAG、上传 CSV、训练、对比、诊断 |
 | **教学实验室** | `/lab` | 课堂 / 自学 | 滑块调参、3D 网络、逐层观察、教学任务、快照回放、归因 |
 | **图像实验** | `/images` | 想看卷积怎么工作 | 内置图形数据集、固定小 CNN、混淆矩阵与样本网格 |
+| **多模态实验** | `/multimodal` | 想看特征融合 | 图像分支 + 表格分支拼接后分类，混淆矩阵与逐样本特征 |
 
-三条线共用同一套训练、记录与 AI 助教体系，但**不做跨模态融合**（边界见设计文档 §13.10）。
+四条线共用同一套训练、记录与 AI 助教体系。多模态线做的是**窄融合**（内置合成数据、固定 FusionNet），
+不做文本 / 音频与任意模态组合（边界见设计文档 §13.10）。
 
 ### 1.3 核心能力
 
@@ -56,6 +58,12 @@ DeepVision 把这五件事变成**可看、可问、可验证**：浏览器里�
 - 快照回放：回到任意 epoch 看决策边界
 - Integrated Gradients 归因：每个输入特征推了多少
 
+**会融合**
+
+- 图像分支（两层卷积）与表格分支（全连接）各自提特征，拼接后再分类
+- 内置合成数据同时带图形与 4 个表格特征，两路都有噪声，融合后互补
+- 训练后展示混淆矩阵与逐样本「图像 + 表格特征 + 预测置信度」
+
 **工程**
 
 - 密码 argon2id、JWT、资源归属校验、上传大小/类型校验
@@ -76,7 +84,7 @@ DeepVision 把这五件事变成**可看、可问、可验证**：浏览器里�
 
 | 项 | 当前 |
 | --- | --- |
-| 提交 | **127** 次，按功能模块拆分 |
+| 提交 | **140+** 次，按功能模块拆分 |
 | 后端测试 | **113 passed** |
 | 端到端自测 | **29 / 29** 通过 |
 | 前端构建 | 通过（`vue-tsc --noEmit`） |
@@ -144,7 +152,7 @@ DeepVision 把这五件事变成**可看、可问、可验证**：浏览器里�
 | 训练执行 | 后台线程 + `asyncio.Queue` | 不阻塞事件循环，事件可广播给多个客户端 |
 | 诊断 | 规则引擎，不用 LLM | 判定要稳定可复现；LLM 只负责解释 |
 | 代码行映射 | 配置驱动生成等效代码 | 平台没有「源码行」，用 codegen + 行号映射替代 |
-| 图像线 | 固定小 CNN，不进画布 | 通用多模态需重写引擎，投入产出不成立 |
+| 图像线 | 固定小 CNN，不进画布 | 通用多模态需重写引擎，先做窄融合 |
 | 随机种子 | 训练固定 `seed=42` | 重跑与教学任务判定可复现 |
 
 ### 2.4 目录结构
@@ -171,7 +179,7 @@ AI-web/
 │   │   ├── composables/     # WebSocket 训练通道
 │   │   ├── data/            # 教学任务定义
 │   │   ├── router/ stores/  types/ utils/
-│   │   └── views/           # 8 个页面
+│   │   └── views/           # 9 个页面
 │   ├── package.json
 │   └── vite.config.ts
 ├── 设计文档.md               # 架构 / 页面 / 数据模型 / 接口 / 验收
@@ -188,13 +196,14 @@ AI-web/
 | 分组 | 代表接口 |
 | --- | --- |
 | 认证 | `POST /api/auth/register`、`POST /api/auth/login`、`GET /api/auth/me` |
-| 数据集 | `POST /api/datasets`、`GET /api/datasets`、`GET /api/datasets/{id}`、`POST /api/datasets/image`、`GET /api/datasets/{id}/preview` |
+| 数据集 | `POST /api/datasets`、`GET /api/datasets`、`GET /api/datasets/{id}`、`POST /api/datasets/image`、`GET /api/datasets/{id}/preview`、`POST /api/datasets/multimodal`、`GET /api/datasets/{id}/preview/multimodal` |
 | 拓扑 | `POST /api/graph/validate` |
 | 表格训练 | `POST /api/train`、`POST /api/train/{id}/stop`、`WS /ws/train/{id}`、`GET /api/train/{id}/code` |
 | 记录 | `GET /api/records`、`GET /api/records/{id}`、`DELETE /api/records/{id}`、`GET /api/records/{id}/model`（下载权重） |
 | 诊断 / 对比 | `GET /api/records/{id}/diagnosis`、`GET /api/records/compare?ids=`、`POST /api/records/{id}/rerun`、`GET /api/records/{id}/code` |
 | 实验室 | `POST /api/lab/train`、`WS /ws/lab/{id}`、`pause/resume/stop`、`GET /api/lab/{id}/inspect`、`projection`、`attention`、`diagnosis`、`compression`、`snapshots`、`snapshot`、`attribution`、`POST /api/lab/tune` |
 | 图像 | `POST /api/train/image`、`GET /api/records/{id}/image-eval` |
+| 多模态 | `POST /api/train/multimodal`、`GET /api/records/{id}/image-eval`（含表格特征） |
 | 草稿 | `GET /api/workspace/draft`、`PUT /api/workspace/draft` |
 | AI | `POST /api/ai/chat`（SSE）、`POST /api/ai/diagnose` |
 
@@ -462,6 +471,7 @@ npx prettier --check src
 | 第二大阶段 | 3D 拓扑、逐层统计、视图切换、FPS 与导出 |
 | 第三大阶段 | 教学实验室：滑块调参、3D 网络、仪表盘、观察弹窗（传播/注意力/曲线/归因/投影）、教学任务、自动调参、剪枝量化、快照回放 |
 | 图像线 | 合成图形数据集、固定小 CNN、混淆矩阵与样本网格、重跑 |
+| 多模态线 | 图像 + 表格特征融合（固定 FusionNet）、混淆矩阵、逐样本特征展示、重跑 |
 | 协作最小集 | 画布草稿服务端同步（同账号多设备） |
 
 ### B. 开发规范
@@ -483,7 +493,7 @@ npx prettier --check src
 
 ### D. 范围说明
 
-功能范围以当前实现为准，未实现的能力（算子融合、跨用户协作、多模态融合等）已在
+功能范围以当前实现为准，未实现的能力（算子融合、跨用户协作、文本 / 音频多模态等）已在
 [设计文档 §13](./设计文档.md) 的「限制」与「完整版范围」中列明，不在此另列计划。
 
 已知边界见 [设计文档 §13](./设计文档.md)，尤其是 §13.4「完整版范围」与各节「限制」。

@@ -2107,3 +2107,61 @@ README §3.6 只有一段「填 .env 就完事」，缺少取 Key、验证、错
 | 真实请求 `deepseek-chat` | `HTTP 200`，返回 `pong` |
 | 真实请求 `deepseek-v4.1-flash` | `HTTP 400`，响应列出支持项 |
 | 端到端 `/api/ai/chat` | 首条事件 `{"type":"meta","mode":"llm"}`，流式返回中文回答 |
+
+---
+
+## 2026-10-26 · 新增：多模态实验线（图像 + 表格窄融合）
+
+**类型**：功能开发
+**对应提交**：`feat: 多模态数据集与融合训练`、`feat(web): 多模态实验页与融合评估`、`docs: 记录多模态窄融合`
+
+### 范围决策
+
+此前文档写「不做多模态融合」。用户要求实现，于是做**窄融合**：
+
+- 只做「图像 + 表格」两路，图像为内置合成图形
+- 固定 `FusionNet`，不接入画布编辑
+- 不做文本 / 音频、不做任意模态组合
+
+### 后端
+
+- 新增 `services/multimodal_dataset.py`：
+  - 每个样本 = 8–24px 灰度图形 + 4 个表格特征（面积占比、包围盒宽、高、填充率）
+  - 表格特征从**带噪图像**统计而来，两路都有噪声，单独看任一路都会错一些
+  - `npz` 保存 `x / t / y`，复用 `datasets.kind = multimodal`
+- `services/training.py`：
+  - 新增 `FusionNet`：卷积分支（Conv8→Pool→Conv16→Pool→Flatten）+ 表格分支（Linear→ReLU），拼接后 `Linear(→32)→ReLU→Linear(→2)`
+  - 新增 `create_multimodal_task` 与 `_run_multimodal_training`，事件结构复用图像线
+- `api/v1/datasets.py`：`POST /api/datasets/multimodal`、`GET /api/datasets/{id}/preview/multimodal`
+- `api/v1/train.py`：`POST /api/train/multimodal`
+- `api/v1/records.py`：多模态记录支持一键重跑（按原数据集与超参）
+- `schemas/dataset.py`：`DatasetStats` 增加 `tabular_features` / `tabular_dim`（此前会被响应模型过滤）
+
+### 前端
+
+- 新增 `/multimodal` 页面：生成数据集、样本预览（图像 + 4 个特征块）、训练参数
+- 工作台顶栏新增「多模态实验」入口
+- `ImageEvalPanel` 支持多模态：样本下方显示表格特征（首字 + 数值）
+- 训练页对图像 / 多模态统一显示「不落盘权重」
+
+### 实测
+
+| 配置 | 验证集准确率 |
+| --- | --- |
+| 400 张 8×8，5 轮，lr 0.001 | 0.613（欠训练） |
+| 400 张 8×8，20 轮，lr 0.001 | **0.950** |
+| 400 张 8×8，40 轮，lr 0.002 | **0.963** |
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 后端测试 | **119 passed**（新增多模态 4 条用例） |
+| 前端构建 | 通过 |
+| 端到端 | 生成数据集 → 预览（含 tabular）→ 训练 → 混淆矩阵 + 逐样本特征 → 重跑 202 |
+
+### 边界
+
+- 只支持内置合成数据，不能上传自己的图像 / 表格组合
+- 结构固定，不可编辑
+- 通用多模态（文本 / 音频、任意组合）仍未做
