@@ -431,6 +431,7 @@ onBeforeUnmount(() => {
                     size="sm"
                     :loading="rerunning === record.id"
                     :disabled="record.dataset_id === null"
+                    title="用相同的数据集与超参数重跑（图像记录会重新创建固定 CNN 任务；实验室记录不可用）"
                     @click="onRerun(record)"
                   >
                     重跑
