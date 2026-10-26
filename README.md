@@ -321,24 +321,86 @@ cd backend
 
 依赖清单：[`backend/requirements.txt`](backend/requirements.txt)、[`frontend/package.json`](frontend/package.json)。
 
-### 3.6 接入大模型（可选）
+### 3.6 接入大模型（可选，以 DeepSeek 为例）
 
-不配置时使用内置知识库（14 条），功能完整、完全离线。在 `backend/.env` 填：
+不配置时使用内置知识库（14 条），功能完整、完全离线。下面是把 AI 助教切到 DeepSeek 的完整步骤。
+
+#### 第 1 步：获取 API Key
+
+登录 DeepSeek 开放平台 → 「API keys」→ 创建 → 复制 `sk-...`（只显示一次，注意不要带空格）。
+
+#### 第 2 步：写入 `backend/.env`
 
 ```env
 LLM_PROVIDER=openai
-LLM_API_KEY=sk-xxx
+LLM_API_KEY=sk-你的key
 LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-flash
 LLM_TIMEOUT_SECONDS=60
 LLM_VERIFY_SSL=true
 AI_RATE_LIMIT_PER_MINUTE=20
 ```
 
-- 改完需**重启后端**（配置有进程内缓存）
-- 验证：`POST /api/ai/chat` 第一条 SSE 事件应为 `{"type":"meta","mode":"llm"}`；若是 `fallback` 说明调用失败已降级
-- **TLS**：默认用系统证书库。企业代理注入自签根证书时 certifi 会失败，系统证书库通常可通过；仍失败可设 `LLM_VERIFY_SSL=false`（降低安全性）
-- 请求使用 `trust_env=False`，**不经过系统代理**
+#### 第 3 步：确认模型名
+
+DeepSeek 接口会校验模型名，**填错直接返回 400，并在错误里列出支持的名称**。
+
+| 模型 id | 状态 | 说明 |
+| --- | --- | --- |
+| `deepseek-flash` | ✅ 实测可用 | 通用对话，当前默认 |
+| `deepseek-v4-pro` | ✅ 接口列为支持 | 更强的版本，按账号额度使用 |
+| `deepseek-chat` | ✅ 可用（别名） | 请求会转发到 `deepseek-flash`，返回的 `model` 字段是 flash |
+| `deepseek-v4.1-flash` | ❌ 返回 400 | 接口提示「supported names are deepseek-flash, deepseek-v4-pro」 |
+
+> 模型列表由服务商控制，平台不硬编码。换模型只改 `LLM_MODEL`；
+> 不确定时先跑第 5 步的脚本，400 的响应体会直接告诉你可用名称。
+
+#### 第 4 步：重启后端
+
+配置有进程内缓存，**改完必须重启**，否则仍按旧配置运行。
+
+#### 第 5 步：验证
+
+```bash
+cd backend
+.venv\Scripts\python.exe scripts/check_llm.py
+```
+
+成功时输出类似：
+
+```
+LLM_PROVIDER = openai
+LLM_BASE_URL = https://api.deepseek.com/v1
+LLM_MODEL    = deepseek-chat
+LLM_API_KEY  = sk-a…z9
+HTTP 200
+模型返回：deepseek-chat / 'pong'
+接入成功。
+```
+
+也可以直接看业务接口：`POST /api/ai/chat` 的第一条 SSE 事件应为
+`{"type":"meta","mode":"llm"}`；若是 `fallback`，说明调用失败已自动降级（功能仍可用）。
+
+#### 常见错误
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `HTTP 400` | 模型名不被支持 | 看响应体里的 `supported API model names`，改成其中之一 |
+| `HTTP 401` | Key 无效 / 过期 / 多了空格 | 重新生成，检查引号与空格 |
+| `HTTP 402` | 余额不足 | 充值 |
+| `HTTP 403` | 账号无权调用该模型 | 控制台确认已开通 |
+| `HTTP 404` | 模型名或地址不对 | 核对 `LLM_MODEL` 与 `LLM_BASE_URL`（要带 `/v1`） |
+| `HTTP 429` | 触发限流 | 稍后重试，或调低 `AI_RATE_LIMIT_PER_MINUTE` |
+| 连接超时 | 网络不通 / 需要代理 | 脚本与后端都**不走系统代理**（`trust_env=False`），需能直连 |
+| TLS 证书错误 | 企业代理注入自签根证书 | 默认用系统证书库；仍失败可临时 `LLM_VERIFY_SSL=false`（降低安全性） |
+| 首条事件是 `fallback` | 调用失败已降级 | 看后端日志中的 warning，按上表排查 |
+
+#### 安全与设计说明
+
+- Key 只存在 `backend/.env`（已在 `.gitignore`），**前端永远拿不到**
+- 所有调用在后端完成，前端只接收流式文本
+- 未配置或调用失败会**自动降级**到内置知识库，不影响其他功能
+- 输出经敏感词脱敏、输入被拦截，单用户限流 20 次/分钟
 
 ### 3.7 验证与测试
 

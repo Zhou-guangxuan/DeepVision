@@ -2056,3 +2056,54 @@ P2 的共同前提是「引擎保留中间态」。本轮先做运行时剖析�
 
 - 图像实验线不保存 `state_dict`，所以没有下载入口
 - 下载的是 PyTorch `state_dict`（`.pt`），不是完整模型对象；加载需先按拓扑重建网络
+
+---
+
+## 2026-10-26 · 完善大模型接入（DeepSeek）并实测模型名
+
+**类型**：文档 / 配置
+**对应提交**：`docs: 完善 DeepSeek 接入说明并新增连通性检查脚本`
+
+### 背景
+
+README §3.6 只有一段「填 .env 就完事」，缺少取 Key、验证、错误对照；
+同时用户希望接入 `deepseek-v4.1-flash`，需要确认这个模型名是否真实可用。
+
+### 实测结论（用项目现有 Key 直接请求）
+
+| 请求的 `LLM_MODEL` | 结果 |
+| --- | --- |
+| `deepseek-chat` | `200`，返回的 `model` 字段是 `deepseek-flash`（别名） |
+| `deepseek-v4.1-flash` | **`400`**，错误体：`The supported API model names are deepseek-flash, deepseek-v4-pro` |
+
+因此：
+
+- 正确配置是 `LLM_MODEL=deepseek-flash`（或 `deepseek-v4-pro`）
+- `deepseek-v4.1-flash` 不存在，填了会 400；脚本会把响应体里的支持列表打印出来
+
+### 代码 / 配置
+
+- 新增 `backend/scripts/check_llm.py`：
+  - 读 `backend/.env`，打印 provider / base_url / model（Key 只显示首尾）
+  - 未配置 Key：提示离线模式，退出码 0
+  - 已配置：发一次非流式请求，打印 HTTP 状态与模型返回
+  - 400 / 401 / 402 / 403 / 404 / 429 各有对应排查提示
+  - 与后端一致使用**系统证书库**，`trust_env=False` 不走系统代理
+- 本地 `backend/.env` 改为 `LLM_MODEL=deepseek-flash`（该文件不入库）
+
+### 文档
+
+- README §3.6 重写为 5 步：拿 Key → 写 .env → 确认模型名 → 重启 → 验证
+- 新增模型名对照表（含 `deepseek-v4.1-flash` 返回 400 的实测记录）
+- 新增 400 错误行与「响应体会列出支持名称」的排查方法
+- 环境配置.md 补充模型说明与检查项
+- `.env.example` 的 DeepSeek 示例改为 `deepseek-flash`
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 脚本离线分支 | 输出离线提示，退出码 0 |
+| 真实请求 `deepseek-chat` | `HTTP 200`，返回 `pong` |
+| 真实请求 `deepseek-v4.1-flash` | `HTTP 400`，响应列出支持项 |
+| 端到端 `/api/ai/chat` | 首条事件 `{"type":"meta","mode":"llm"}`，流式返回中文回答 |
