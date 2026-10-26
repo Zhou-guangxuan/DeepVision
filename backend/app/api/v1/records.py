@@ -199,6 +199,22 @@ def rerun_record(
             status.HTTP_404_NOT_FOUND, "DATASET_NOT_FOUND", "数据集不存在或无权访问"
         )
 
+    hyper = dict(record.hyperparameters or {})
+    hyper.setdefault("epochs", 10)
+    hyper.setdefault("batch_size", 32)
+    hyper.setdefault("learning_rate", 0.001)
+
+    # 图像实验线不走 DAG 校验：用同一份图像数据集与超参重新创建固定 CNN 任务
+    if dataset.kind == "image":
+        image_task = training.create_image_task(
+            user_id=current_user.id,
+            dataset_id=record.dataset_id,
+            hyper=hyper,
+        )
+        return TrainStartResponse(
+            task_id=image_task.task_id, total_epochs=int(hyper["epochs"])
+        )
+
     config = ModelConfigIn(**record.network_config)
     result = validate_model_config(config)
     if not result["valid"]:
@@ -207,11 +223,6 @@ def rerun_record(
             "INVALID_MODEL_CONFIG",
             result["errors"][0] if result["errors"] else "拓扑结构非法",
         )
-
-    hyper = dict(record.hyperparameters or {})
-    hyper.setdefault("epochs", 10)
-    hyper.setdefault("batch_size", 32)
-    hyper.setdefault("learning_rate", 0.001)
 
     task = training.create_task(
         user_id=current_user.id,
