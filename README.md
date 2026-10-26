@@ -176,6 +176,7 @@ AI-web/
 │   └── vite.config.ts
 ├── 设计文档.md               # 架构 / 页面 / 数据模型 / 接口 / 验收
 ├── 演示答辩脚本.md
+├── multi_io_rings.csv        # 示例数据集：2+2 输入 / 3×32 隐藏 / 2 输出二分类
 ├── DEVELOPMENT_LOG.md
 └── README.md
 ```
